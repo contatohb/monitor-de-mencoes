@@ -56,14 +56,20 @@ app = Flask(__name__)
 # ---------------------------------------------------------------------------
 
 def _autenticar(req) -> bool:
-    """Verifica o Bearer token no cabeçalho Authorization."""
+    """Verifica o token nos cabeçalhos Authorization (Bearer) ou X-Internal-Key."""
     if not INTERNAL_API_KEY:
         log.warning("INTERNAL_API_KEY não configurada — endpoint desprotegido!")
         return True
+    # Aceitar Bearer token no Authorization
     auth = req.headers.get("Authorization", "")
     if auth.startswith("Bearer "):
         token = auth[len("Bearer "):]
-        return token == INTERNAL_API_KEY
+        if token == INTERNAL_API_KEY:
+            return True
+    # Aceitar X-Internal-Key (enviado pela Edge Function Supabase)
+    x_key = req.headers.get("X-Internal-Key", "")
+    if x_key == INTERNAL_API_KEY:
+        return True
     return False
 
 
