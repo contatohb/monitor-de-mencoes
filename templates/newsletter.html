@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="pt-BR" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="color-scheme" content="light dark" />
+  <meta name="supported-color-schemes" content="light dark" />
+  <title>Intellicore Monitor — {{DATA}}</title>
+  <style type="text/css">
+    /* ── Reset ── */
+    body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+    table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+    img { -ms-interpolation-mode: bicubic; border: 0; outline: none; text-decoration: none; }
+    body { margin: 0 !important; padding: 0 !important; width: 100% !important; }
+
+    /* ── Dark Mode ── */
+    @media (prefers-color-scheme: dark) {
+      .email-bg       { background-color: #0f1117 !important; }
+      .card-bg        { background-color: #1a1d27 !important; }
+      .card-border    { border-color: #2a2d3e !important; }
+      .text-primary   { color: #f0f2f8 !important; }
+      .text-secondary { color: #9ba3c0 !important; }
+      .text-muted     { color: #6b7494 !important; }
+      .divider        { border-color: #2a2d3e !important; }
+      .result-card    { background-color: #1e2235 !important; border-color: #2e3350 !important; }
+      .tag-bg         { background-color: #1e2235 !important; color: #7b8fd4 !important; }
+      .footer-bg      { background-color: #0f1117 !important; }
+      .status-ok-bg   { background-color: #0d2218 !important; }
+      .status-ok-text { color: #34d399 !important; }
+      .alert-bg       { background-color: #2d1a0e !important; }
+      .alert-border   { border-color: #c2410c !important; }
+      .alert-text     { color: #fb923c !important; }
+    }
+
+    /* ── Responsive ── */
+    @media only screen and (max-width: 620px) {
+      .email-container { width: 100% !important; }
+      .mobile-pad      { padding: 24px 16px !important; }
+      .mobile-stack    { display: block !important; width: 100% !important; }
+      .hide-mobile     { display: none !important; }
+      .header-title    { font-size: 22px !important; }
+      .result-meta     { font-size: 11px !important; }
+    }
+  </style>
+</head>
+<body style="margin:0;padding:0;background-color:#f0f2f8;" class="email-bg">
+
+<!-- ═══════════════════════════════════════════════════════
+     WRAPPER
+════════════════════════════════════════════════════════ -->
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
+       style="background-color:#f0f2f8;" class="email-bg">
+  <tr>
+    <td align="center" style="padding:32px 16px;">
+
+      <!-- ── Container ── -->
+      <table role="presentation" class="email-container" width="600" cellspacing="0" cellpadding="0" border="0"
+             style="max-width:600px;width:100%;">
+
+        <!-- ════════════════════════════════════════
+             HEADER — faixa escura premium
+        ═════════════════════════════════════════ -->
+        <tr>
+          <td style="background:linear-gradient(135deg,#0d1b3e 0%,#1a2f6b 60%,#0f2255 100%);
+                     border-radius:16px 16px 0 0;padding:36px 40px 28px 40px;">
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+              <tr>
+                <td>
+                  <!-- Logo / wordmark -->
+                  <table role="presentation" cellspacing="0" cellpadding="0" border="0">
+                    <tr>
+                      <td style="background-color:#1e3a8a;border-radius:8px;
+                                 padding:6px 12px;display:inline-block;">
+                        <span style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
+                                     font-size:11px;font-weight:700;letter-spacing:3px;
+                                     color:#93c5fd;text-transform:uppercase;">
+                          INTELLICORE
+                        </span>
+                      </td>
+                    </tr>
+                  </table>
+                  <!-- Título principal -->
+                  <h1 class="header-title"
+                      style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
+                             font-size:26px;font-weight:700;color:#ffffff;
+                             margin:16px 0 6px 0;line-height:1.2;letter-spacing:-0.3px;">
+                    Monitor de Menções
+                  </h1>
+                  <!-- Subtítulo / data -->
+                  <p style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
+                            font-size:14px;color:#93c5fd;margin:0;letter-spacing:0.2px;">
+                    Relatório automático &nbsp;·&nbsp; {{DATA_HORA}}
+                  </p>
+                </td>
+                <td align="right" valign="middle" class="hide-mobile"
+                    style="padding-left:20px;">
+                  <!-- Ícone de status -->
+                  <div style="width:52px;height:52px;border-radius:50%;
+                              background-color:{{STATUS_ICON_BG}};
+                              display:inline-block;text-align:center;line-height:52px;
+                              font-size:24px;">
+                    {{STATUS_ICON}}
+                  </div>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- ════════════════════════════════════════
+             BANNER DE STATUS
+        ═════════════════════════════════════════ -->
+        <tr>
+          <td style="background-color:{{STATUS_BAR_BG}};padding:14px 40px;
+                     border-left:4px solid {{STATUS_BAR_ACCENT}};"
+              class="{{STATUS_BAR_CLASS}}">
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+              <tr>
+                <td>
+                  <span style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
+                               font-size:13px;font-weight:700;color:{{STATUS_BAR_TEXT}};
+                               text-transform:uppercase;letter-spacing:1px;">
+                    {{STATUS_LABEL}}
+                  </span>
+                  <span style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
+                               font-size:13px;color:{{STATUS_BAR_TEXT}};opacity:0.8;
+                               margin-left:8px;">
+                    {{STATUS_DESC}}
+                  </span>
+                </td>
+                <td align="right">
+                  <span style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
+                               font-size:12px;color:{{STATUS_BAR_TEXT}};opacity:0.6;
+                               white-space:nowrap;">
+                    {{N_RESULTADOS}} resultado(s)
+                  </span>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- ════════════════════════════════════════
+             CORPO PRINCIPAL
+        ═════════════════════════════════════════ -->
+        <tr>
+          <td style="background-color:#ffffff;padding:0;" class="card-bg">
+
+            <!-- ── Bloco de resultados ── -->
+            {{BLOCO_RESULTADOS}}
+
+            <!-- ── Separador ── -->
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+              <tr>
+                <td style="padding:0 40px;">
+                  <hr style="border:none;border-top:1px solid #e8eaf2;margin:0;" class="divider" />
+                </td>
+              </tr>
+            </table>
+
+            <!-- ── Termos monitorados ── -->
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+              <tr>
+                <td class="mobile-pad" style="padding:28px 40px 24px 40px;">
+                  <p style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
+                            font-size:11px;font-weight:700;color:#6b7494;
+                            text-transform:uppercase;letter-spacing:1.5px;margin:0 0 14px 0;"
+                     class="text-muted">
+                    Termos monitorados
+                  </p>
+                  <table role="presentation" cellspacing="0" cellpadding="0" border="0">
+                    <tr>
+                      <td style="padding:0 8px 0 0;">
+                        <span style="display:inline-block;background-color:#eff2ff;
+                                     color:#3b5bdb;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
+                                     font-size:12px;font-weight:600;padding:5px 12px;
+                                     border-radius:20px;" class="tag-bg">
+                          Hudson Viana Borges
+                        </span>
+                      </td>
+                      <td style="padding:0 8px 0 0;">
+                        <span style="display:inline-block;background-color:#eff2ff;
+                                     color:#3b5bdb;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
+                                     font-size:12px;font-weight:600;padding:5px 12px;
+                                     border-radius:20px;" class="tag-bg">
+                          CPF 828.258.071-68
+                        </span>
+                      </td>
+                      <td>
+                        <span style="display:inline-block;background-color:#eff2ff;
+                                     color:#3b5bdb;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
+                                     font-size:12px;font-weight:600;padding:5px 12px;
+                                     border-radius:20px;" class="tag-bg">
+                          CNPJ 32.309.482/0001-52
+                        </span>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+
+            <!-- ── Separador ── -->
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+              <tr>
+                <td style="padding:0 40px;">
+                  <hr style="border:none;border-top:1px solid #e8eaf2;margin:0;" class="divider" />
+                </td>
+              </tr>
+            </table>
+
+            <!-- ── Fontes verificadas ── -->
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+              <tr>
+                <td class="mobile-pad" style="padding:24px 40px 32px 40px;">
+                  <p style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
+                            font-size:11px;font-weight:700;color:#6b7494;
+                            text-transform:uppercase;letter-spacing:1.5px;margin:0 0 16px 0;"
+                     class="text-muted">
+                    Fontes verificadas nesta execução
+                  </p>
+                  {{TABELA_FONTES}}
+                </td>
+              </tr>
+            </table>
+
+          </td>
+        </tr>
+
+        <!-- ════════════════════════════════════════
+             FOOTER
+        ═════════════════════════════════════════ -->
+        <tr>
+          <td style="background-color:#0d1b3e;border-radius:0 0 16px 16px;
+                     padding:24px 40px;" class="footer-bg">
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+              <tr>
+                <td>
+                  <p style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
+                            font-size:12px;color:#4a6fa5;margin:0 0 4px 0;">
+                    <strong style="color:#7b9fd4;">Intellicore Monitor</strong>
+                    &nbsp;·&nbsp; Execução automática diária
+                  </p>
+                  <p style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
+                            font-size:11px;color:#3a5070;margin:0;">
+                    Este relatório é gerado automaticamente. Não responda a este email.
+                  </p>
+                </td>
+                <td align="right" valign="middle">
+                  <p style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
+                            font-size:11px;color:#3a5070;margin:0;white-space:nowrap;">
+                    {{DATA_HORA}}
+                  </p>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- Espaço inferior -->
+        <tr><td style="height:24px;"></td></tr>
+
+      </table>
+      <!-- /Container -->
+
+    </td>
+  </tr>
+</table>
+
+</body>
+</html>

@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: intellicore-monitor
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: INTERNAL_API_KEY
+        generateValue: true
+      - key: GMAIL_SMTP_USER
+        value: huddsong@gmail.com
+      - key: GMAIL_APP_PASSWORD
+        sync: false
+      - key: SUPABASE_URL
+        value: https://wuadkgmggkmyglxpxeyh.supabase.co
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
