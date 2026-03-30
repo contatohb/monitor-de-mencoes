@@ -113,19 +113,23 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Termos de busca
 # ---------------------------------------------------------------------------
-# IMPORTANTE: usar APENAS nome completo para evitar falsos positivos.
-# Termos parciais como "Hudson Borges" ou "Huddson Viana" geram falsos positivos.
+# Todas as buscas usam frases EXATAS (entre aspas nas queries).
+# Nunca termos isolados como "Hudson", "Borges" ou "Viana" — apenas combinações
+# que identifiquem univocamente a pessoa.
 SEARCH_TERMS = [
-    "Hudson Viana Borges",
-    "82825807168",
-    "32309482000152",
+    "Hudson Viana Borges",   # nome completo
+    "Huddson Viana",         # variação ortográfica conhecida
+    "Hudson Borges",         # nome abreviado usado profissionalmente
+    "82825807168",           # CPF sem pontuação
+    "32309482000152",        # CNPJ sem pontuação
 ]
 
-# Termos formatados para busca web (CPF e CNPJ com pontuação)
-# Evita falsos positivos por correspondência parcial de dígitos
-# IMPORTANTE: usar APENAS nome completo para evitar falsos positivos.
+# Termos formatados para busca web (CPF e CNPJ com pontuação).
+# Evita falsos positivos por correspondência parcial de dígitos.
 SEARCH_TERMS_WEB = [
     "Hudson Viana Borges",
+    "Huddson Viana",
+    "Hudson Borges",
     "828.258.071-68",
     "32.309.482/0001-52",
 ]
