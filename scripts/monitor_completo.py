@@ -1043,6 +1043,17 @@ def main():
     novos, novos_ids, source_map = filtrar_novos(todos_resultados, seen)
     log.info(f"Resultados NOVOS (não vistos antes): {len(novos)}")
 
+    # ── Gravar TODOS os IDs encontrados no Supabase (não apenas os novos) ──────
+    # Isso garante que resultados estáticos da web sejam marcados como "vistos"
+    # imediatamente, evitando reenvios em execuções futuras.
+    todos_ids = {make_id(r["source"], r["title"], r.get("url", "")) for r in todos_resultados}
+    todos_source_map = {make_id(r["source"], r["title"], r.get("url", "")): r.get("source", "unknown") for r in todos_resultados}
+    ids_a_persistir = todos_ids - seen  # apenas os que ainda não estão no Supabase
+    if ids_a_persistir:
+        save_seen(seen, new_ids=ids_a_persistir, source_map=todos_source_map)
+        log.info(f"Supabase atualizado: {len(ids_a_persistir)} ID(s) novos gravados (total bruto)")
+    # ─────────────────────────────────────────────────────────────────────────
+
     hoje = datetime.now().strftime("%d/%m/%Y")
     assunto = _gerar_assunto(
         resultados=novos,
@@ -1064,9 +1075,7 @@ def main():
     deve_registrar = bool(novos) or args.force_send
     if deve_registrar:
         registrar_email_pendente(assunto, corpo_html)
-        seen.update(novos_ids)
-        save_seen(seen, new_ids=novos_ids, source_map=source_map)
-        log.info(f"Histórico atualizado: {len(seen)} ID(s) no total")
+        log.info(f"Histórico atualizado: {len(seen) + len(todos_ids)} ID(s) no total")
     else:
         log.info("Sem resultados novos e --force-send não ativado. Email não registrado.")
 
