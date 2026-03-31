@@ -242,7 +242,7 @@ def enviar_email(email_monitor: dict, regressoes: list) -> bool:
     if not partes_assunto:
         partes_assunto.append("Relatorio diario")
 
-    assunto = f"[Intellicore] {' | '.join(partes_assunto)} — {hoje}"
+    assunto = f"[Pessoais] Intellicore Menções — {' | '.join(partes_assunto)} — {hoje}"
 
     # Obter corpo HTML
     html_corpo = ""
