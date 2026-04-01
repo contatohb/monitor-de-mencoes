@@ -35,14 +35,11 @@ jobs:
           retry_wait_seconds: 60
           command: python scripts/run_daily.py
         env:
-          GMAIL_SENDER: ${{ secrets.GMAIL_SENDER }}
+          GMAIL_SMTP_USER: huddsong@gmail.com
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
-          MONITOR_RECIPIENT: ${{ secrets.MONITOR_RECIPIENT }}
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
 
       - name: Notify on failure
         if: failure()
         run: |
-          echo "Monitor de Menções falhou em $(date)"
+          echo "Monitor de Mencoes falhou em $(date)"
           exit 1
