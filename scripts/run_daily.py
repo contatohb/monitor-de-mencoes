@@ -338,12 +338,11 @@ def main():
 
     # ── 3. Envio do email ─────────────────────────────────────────────────────
     ok_envio = False
-    if email_monitor or regressoes or args.force_send:
-        ok_envio = enviar_email(email_monitor, regressoes)
-        if not ok_envio:
-            log.warning("Envio falhou via Gmail SMTP")
-    else:
-        log.info("Nenhum resultado novo e sem regressões — email não enviado")
+    # Enviar email sempre (com ou sem resultados novos)
+    ok_envio = enviar_email(email_monitor, regressoes)
+    if not ok_envio:
+        log.warning("Envio falhou via Gmail SMTP")
+
 
     # ── 4. Registrar execução concluída no Supabase ───────────────────────────
     # Atualizar o registro de "iniciado" para "ok" (upsert por data_execucao)
