@@ -55,6 +55,7 @@ import sys
 import time
 import urllib3
 from datetime import datetime, date
+from urllib.parse import urlparse, parse_qs, unquote
 from pathlib import Path
 
 import requests
@@ -254,6 +255,37 @@ def get_page(
         return None
 
 
+
+def _extrair_url_ddg(href: str) -> str:
+    """
+    Extrai a URL real de um link de redirecionamento do DuckDuckGo.
+    DDG retorna hrefs como //duckduckgo.com/l/?uddg=https%3A%2F%2F...
+    Esta função extrai o parâmetro 'uddg' e retorna a URL decodificada.
+    Se não for um redirect DDG, retorna o href original.
+    """
+    if not href:
+        return ""
+    # Normalizar: DDG usa //duckduckgo.com/...
+    if href.startswith("//"):
+        href = "https:" + href
+    if "duckduckgo.com/l/" in href or "duckduckgo.com/y.js" in href:
+        try:
+            parsed = urlparse(href)
+            params = parse_qs(parsed.query)
+            uddg = params.get("uddg", [""])[0]
+            if uddg:
+                return unquote(uddg)
+            # Tentar u3 como fallback (ads)
+            u3 = params.get("u3", [""])[0]
+            if u3:
+                return unquote(u3)
+        except Exception:
+            pass
+    # Se não é DDG redirect, retornar como está
+    if href.startswith("http"):
+        return href
+    return ""
+
 def buscar_via_duckduckgo(term: str, site: str, source_name: str) -> list[dict]:
     """
     Fallback para sites que bloqueiam acesso direto (403).
@@ -283,7 +315,7 @@ def buscar_via_duckduckgo(term: str, site: str, source_name: str) -> list[dict]:
         if not title_el:
             continue
         title = title_el.get_text(strip=True)
-        url_result = title_el.get("href", "")
+        url_result = _extrair_url_ddg(title_el.get("href", ""))
         snippet = snippet_el.get_text(strip=True) if snippet_el else ""
         # Validar: o termo deve aparecer no título ou snippet
         if term.lower() in title.lower() or term.lower() in snippet.lower():
@@ -426,7 +458,7 @@ def buscar_querido_diario() -> list[dict]:
                     f"[{g.get('territory_name', 'Diário')} / {g.get('state_code', '')}]"
                     f" {g.get('date', '')}"
                 )
-                url = g.get("file_url", "")
+                url = g.get("url", "") or g.get("txt_url", "") or g.get("file_url", "")
                 results.append({
                     "source": "Querido Diário",
                     "term": term,
@@ -481,7 +513,7 @@ def buscar_diarios_estaduais() -> list[dict]:
                         f"[{estado} — {g.get('territory_name', 'Diário')}]"
                         f" {g.get('date', '')}"
                     )
-                    url = g.get("file_url", "")
+                    url = g.get("url", "") or g.get("txt_url", "") or g.get("file_url", "")
                     results.append({
                         "source": f"Diário Estadual ({estado})",
                         "term": term,
@@ -967,6 +999,7 @@ def registrar_email_pendente(assunto: str, corpo: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 # FONTE 7: Acompanhamento Concurso MPSP 04/2025
 # Cargo: Analista Técnico-Científico — Médico Veterinário
 # Macrorregião I (Capital) | Edital 78/2025 | Banca VUNESP
@@ -978,15 +1011,15 @@ def buscar_concurso_mpsp() -> list[dict]:
     """
     Monitora publicações específicas do Concurso MPSP 04/2025 em 3 fontes:
     1. DOE-SP (Diário Oficial do Estado de SP) via Querido Diário API
-    2. VUNESP via DuckDuckGo (site bloqueado para scraping direto)
-    3. DOU (Diário Oficial da União)
+    2. VUNESP via DuckDuckGo (site bloqueia scraping direto)
+    3. DOU via DuckDuckGo (DOU é SPA Liferay, scraping não funciona)
     Também busca menção direta ao nome "Hudson Viana Borges" nessas fontes.
+    Todos os resultados incluem URLs diretas clicáveis.
     """
     results = []
     log.info("Buscando atualizações do Concurso MPSP 04/2025 (Veterinário)...")
 
     # ── 1. DOE-SP via Querido Diário API ──────────────────────────────────
-    # O DOE-SP publica nomeações de servidores do MP-SP.
     api_url = "https://api.queridodiario.ok.org.br/api/gazettes"
     doe_terms = [
         '"concurso" "04/2025" "ministério público"',
@@ -1000,7 +1033,7 @@ def buscar_concurso_mpsp() -> list[dict]:
         try:
             params = {
                 "querystring": term,
-                "territory_id": "3550308",  # município São Paulo (IBGE)
+                "territory_id": "3550308",
                 "size": 5,
                 "sort_by": "relevance",
             }
@@ -1012,12 +1045,13 @@ def buscar_concurso_mpsp() -> list[dict]:
                 excerpts = g.get("excerpts", [])
                 snippet = excerpts[0][:400] if excerpts else ""
                 gazette_date = g.get("date", "")
-                file_url = g.get("file_url", "")
+                # URL direta: campo 'url' (PDF) ou 'txt_url' (texto)
+                direct_url = g.get("url", "") or g.get("txt_url", "") or g.get("file_url", "")
                 results.append({
                     "source": "DOE-SP (Concurso MPSP)",
                     "term": term.replace('"', ''),
                     "title": f"[DOE-SP {gazette_date}] {term.replace(chr(34), '')[:80]}",
-                    "url": file_url,
+                    "url": direct_url,
                     "snippet": snippet,
                     "date": gazette_date or date.today().isoformat(),
                 })
@@ -1029,7 +1063,6 @@ def buscar_concurso_mpsp() -> list[dict]:
     count_doe = len(results)
 
     # ── 2. VUNESP via DuckDuckGo ──────────────────────────────────────────
-    # VUNESP retorna 403 para scraping direto; usar DDG site:vunesp.com.br
     vunesp_terms = [
         'concurso 04/2025 "ministério público" site:vunesp.com.br',
         '"analista técnico" veterinário nomeação site:vunesp.com.br',
@@ -1039,14 +1072,15 @@ def buscar_concurso_mpsp() -> list[dict]:
     for term in vunesp_terms:
         try:
             ddg_url = "https://html.duckduckgo.com/html/"
-            r = requests.get(ddg_url, params={"q": term}, headers=HEADERS, timeout=15)
+            r = requests.get(ddg_url, params={"q": term}, headers=HEADERS, timeout=15, verify=False)
             if r.status_code == 200:
                 soup = BeautifulSoup(r.text, "html.parser")
                 for link_el in soup.select("a.result__a"):
                     title = link_el.get_text(strip=True)
-                    href = link_el.get("href", "")
+                    raw_href = link_el.get("href", "")
+                    # Extrair URL real do redirect DDG
+                    href = _extrair_url_ddg(raw_href)
                     if href and "duckduckgo.com" not in href:
-                        # Extrair snippet
                         parent = link_el.find_parent("div", class_="result")
                         snippet_el = parent.select_one(".result__snippet") if parent else None
                         snippet = snippet_el.get_text(strip=True) if snippet_el else ""
@@ -1065,53 +1099,44 @@ def buscar_concurso_mpsp() -> list[dict]:
     log.info(f"  VUNESP: {len(results) - count_doe} resultado(s)")
     count_vunesp = len(results)
 
-    # ── 3. DOU (Diário Oficial da União) ──────────────────────────────────
-    # Publicações federais do MP sobre nomeações/convocações.
-    dou_base = "https://www.in.gov.br/consulta/-/buscar/dou"
+    # ── 3. DOU via DuckDuckGo ─────────────────────────────────────────────
+    # O site in.gov.br é um SPA (Liferay) — scraping direto retorna 0 itens.
+    # Usar DuckDuckGo com site:in.gov.br como alternativa confiável.
     dou_terms = [
-        '"ministério público" "são paulo" "nomeação" "veterinário"',
-        '"ministério público" "04/2025" "nomeação"',
-        '"ministério público" "são paulo" "convocação" "analista técnico"',
-        '"Hudson Viana Borges"',
+        '"ministério público" "são paulo" "nomeação" "veterinário" site:in.gov.br',
+        '"ministério público" "04/2025" "nomeação" site:in.gov.br',
+        '"ministério público" "são paulo" "convocação" "analista técnico" site:in.gov.br',
+        '"Hudson Viana Borges" site:in.gov.br',
     ]
     for term in dou_terms:
         try:
-            r = get_page(dou_base, params={"q": term, "s": "relevancia"}, headers=HEADERS)
-            if not r or not r.text:
-                continue
-            soup = BeautifulSoup(r.text, "html.parser")
-            for item in soup.select(
-                ".resultados-dou-item, .resultado-item, .resultado, "
-                ".search-results .content, .search-result"
-            ):
-                title_el = item.select_one("h2, h3, .title, a.link-titulo, p.title")
-                if not title_el:
-                    continue
-                title = title_el.get_text(strip=True)
-                link_el = item.select_one("a[href]")
-                url = ""
-                if link_el:
-                    url = link_el.get("href", "")
-                    if url and not url.startswith("http"):
-                        url = f"https://www.in.gov.br{url}"
-                snippet_el = item.select_one(".description, .abstract, p:not(.title)")
-                snippet = snippet_el.get_text(strip=True)[:400] if snippet_el else ""
-                results.append({
-                    "source": "DOU (Concurso MPSP)",
-                    "term": term.replace('"', ''),
-                    "title": title[:200],
-                    "url": url,
-                    "snippet": snippet,
-                    "date": date.today().isoformat(),
-                })
+            ddg_url = "https://html.duckduckgo.com/html/"
+            r = requests.get(ddg_url, params={"q": term}, headers=HEADERS, timeout=15, verify=False)
+            if r.status_code == 200:
+                soup = BeautifulSoup(r.text, "html.parser")
+                for link_el in soup.select("a.result__a"):
+                    title = link_el.get_text(strip=True)
+                    raw_href = link_el.get("href", "")
+                    href = _extrair_url_ddg(raw_href)
+                    if href and "duckduckgo.com" not in href:
+                        parent = link_el.find_parent("div", class_="result")
+                        snippet_el = parent.select_one(".result__snippet") if parent else None
+                        snippet = snippet_el.get_text(strip=True) if snippet_el else ""
+                        results.append({
+                            "source": "DOU (Concurso MPSP)",
+                            "term": term.split("site:")[0].strip().replace('"', ''),
+                            "title": title[:200],
+                            "url": href,
+                            "snippet": snippet[:400],
+                            "date": date.today().isoformat(),
+                        })
         except Exception as e:
             log.warning(f"DOU concurso MPSP ({term}): {e}")
-        time.sleep(1)
+        time.sleep(2)
 
     log.info(f"  DOU: {len(results) - count_vunesp} resultado(s)")
     log.info(f"Concurso MPSP total: {len(results)} resultado(s)")
     return results
-
 
 # ---------------------------------------------------------------------------
 # Main
