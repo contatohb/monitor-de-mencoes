@@ -1116,6 +1116,8 @@ def buscar_concurso_mpsp() -> list[dict]:
 
     # ── 1. DOE-SP via Querido Diário API ──────────────────────────────────
     # APENAS busca pelo nome pessoal. Termos genéricos retornam 10k+ falsos positivos.
+    # NOTA: a API NÃO filtra corretamente por territory_id na busca textual,
+    # então filtramos manualmente pelo state_code no retorno.
     api_url = "https://api.queridodiario.ok.org.br/api/gazettes"
     doe_terms = [
         '"Hudson Viana Borges"',
@@ -1133,13 +1135,21 @@ def buscar_concurso_mpsp() -> list[dict]:
                 continue
             data = r.json()
             for g in data.get("gazettes", []):
+                # Filtrar: aceitar apenas SP (a API retorna de outros estados)
+                state_code = g.get("state_code", "")
+                territory_name = g.get("territory_name", "desconhecido")
+                territory_id = g.get("territory_id", "")
+                if state_code and state_code != "SP":
+                    descartados += 1
+                    log.debug(f"  DOE descartado (fora de SP): {territory_name}/{state_code}")
+                    continue
                 excerpts = g.get("excerpts", [])
                 snippet = excerpts[0][:400] if excerpts else ""
                 gazette_date = g.get("date", "")
-                title = f"[DOE-SP {gazette_date}] Menção a Hudson Viana Borges"
+                title = f"[DOE {territory_name} {gazette_date}] Menção a Hudson Viana Borges"
                 direct_url = g.get("url", "") or g.get("txt_url", "") or g.get("file_url", "")
                 results.append({
-                    "source": "DOE-SP (Concurso MPSP 04/2025)",
+                    "source": f"DOE-SP {territory_name} (Menção pessoal)",
                     "term": "Hudson Viana Borges",
                     "title": title,
                     "url": direct_url,
@@ -1150,8 +1160,9 @@ def buscar_concurso_mpsp() -> list[dict]:
             log.warning(f"DOE-SP concurso MPSP ({term}): {e}")
         time.sleep(1)
 
-    log.info(f"  DOE-SP (nome pessoal): {len(results)} resultado(s)")
+    log.info(f"  DOE-SP (nome pessoal): {len(results)} resultado(s), {descartados} fora de SP descartado(s)")
     count_doe = len(results)
+
 
     # ── 2. VUNESP via DuckDuckGo ──────────────────────────────────────────
     # DDG faz matching real de frase exata — muito mais preciso que a API QD.
