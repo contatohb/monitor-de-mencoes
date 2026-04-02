@@ -928,6 +928,7 @@ def formatar_email(novos: list[dict], erros: list[str] = None) -> str:
         "Bancas":            "ok",
         "Editais Culturais": "ok",
         "Web Geral":         "ok",
+        "Concurso MPSP":     "ok",
     }
     # Oi Futuro está fora do ar — registrar como indisponível
     # (não é uma fonte separada na tabela, mas está incluída em Editais Culturais)
@@ -962,6 +963,149 @@ def registrar_email_pendente(assunto: str, corpo: str) -> None:
         json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     log.info(f"Email pendente salvo em {pending_file}")
+
+
+
+# ---------------------------------------------------------------------------
+# FONTE 7: Acompanhamento Concurso MPSP — Analista Técnico-Científico Veterinário
+# Concurso nº 04/2025, Edital 78/2025, Banca VUNESP
+# Monitora nomeações, convocações e publicações no DOE-SP e VUNESP
+# ---------------------------------------------------------------------------
+
+CONCURSO_MPSP_TERMS = [
+    "concurso 04/2025 ministério público",
+    "edital 78/2025 ministério público",
+    "analista técnico científico veterinário MPSP",
+    "nomeação analista técnico científico ministério público são paulo",
+    "convocação concurso MPSP 2025 veterinário",
+    "concurso MPSP veterinário nomeação",
+    "homologação concurso 04/2025 MPSP",
+]
+
+def buscar_concurso_mpsp() -> list[dict]:
+    """
+    Monitora publicações sobre o Concurso MPSP 04/2025 (Analista Técnico-Científico
+    Médico Veterinário) em:
+    - DOE-SP via Querido Diário API (state_code=SP)
+    - DOU (publicações federais do MP)
+    - VUNESP via DuckDuckGo (site:vunesp.com.br)
+    - Busca geral por nomeação/convocação
+    """
+    results = []
+    log.info("Buscando atualizações do Concurso MPSP 04/2025 (Veterinário)...")
+
+    # 1. DOE-SP via Querido Diário API
+    api_url = "https://api.queridodiario.ok.org.br/api/gazettes"
+    doe_terms = [
+        "concurso 04/2025 ministério público",
+        "analista técnico científico veterinário",
+        "nomeação ministério público são paulo",
+        "convocação MPSP veterinário",
+    ]
+    for term in doe_terms:
+        try:
+            params = {
+                "querystring": term,
+                "territory_id": "3550308",   # São Paulo - SP (código IBGE)
+                "size": 5,
+                "sort_by": "relevance",
+            }
+            r = get_page(api_url, params=params, headers=HEADERS_JSON)
+            if not r:
+                continue
+            data = r.json()
+            for g in data.get("gazettes", []):
+                excerpts = g.get("excerpts", [])
+                snippet = excerpts[0][:300] if excerpts else ""
+                results.append({
+                    "source": "DOE-SP (Concurso MPSP)",
+                    "term": term,
+                    "title": f"[DOE-SP {g.get('date', '')}] {term[:60]}",
+                    "url": g.get("file_url", ""),
+                    "snippet": snippet,
+                    "date": g.get("date", date.today().isoformat()),
+                })
+        except Exception as e:
+            log.warning(f"DOE-SP concurso MPSP ({term}): {e}")
+        time.sleep(1)
+
+    # 2. VUNESP via DuckDuckGo (site bloqueado para acesso direto)
+    vunesp_terms = [
+        "concurso 04/2025 ministério público",
+        "analista técnico científico veterinário nomeação",
+    ]
+    for term in vunesp_terms:
+        try:
+            r_list = buscar_via_duckduckgo(term, "vunesp.com.br", "VUNESP (Concurso MPSP)")
+            for r in r_list:
+                r["source"] = "VUNESP (Concurso MPSP)"
+            results.extend(r_list)
+        except Exception as e:
+            log.warning(f"VUNESP concurso MPSP ({term}): {e}")
+        time.sleep(1)
+
+    # 3. DOU — publicações do MP-SP sobre nomeações
+    dou_url = "https://www.in.gov.br/consulta/-/buscar/dou"
+    dou_terms = [
+        "ministério público são paulo nomeação veterinário",
+        "MPSP nomeação analista técnico científico",
+    ]
+    for term in dou_terms:
+        try:
+            r = get_page(dou_url, params={"q": f'"{term}"'}, headers=HEADERS)
+            if r and r.text:
+                soup = BeautifulSoup(r.text, "html.parser")
+                for item in soup.select(".resultados-dou-item, .resultado-item, .resultado"):
+                    title_el = item.select_one("h2, .title, a")
+                    if not title_el:
+                        continue
+                    title = title_el.get_text(strip=True)
+                    link_el = item.select_one("a[href]")
+                    url = link_el["href"] if link_el else ""
+                    if url and not url.startswith("http"):
+                        url = f"https://www.in.gov.br{url}"
+                    results.append({
+                        "source": "DOU (Concurso MPSP)",
+                        "term": term,
+                        "title": title[:200],
+                        "url": url,
+                        "snippet": "",
+                        "date": date.today().isoformat(),
+                    })
+        except Exception as e:
+            log.warning(f"DOU concurso MPSP ({term}): {e}")
+        time.sleep(1)
+
+    # 4. Busca geral via DuckDuckGo para cobrir sites não listados
+    geral_terms = [
+        "nomeação concurso MPSP 04/2025 veterinário",
+        "convocação ministério público SP veterinário 2025",
+    ]
+    for term in geral_terms:
+        try:
+            ddg_url = "https://html.duckduckgo.com/html/"
+            params = {"q": term}
+            r = requests.get(ddg_url, params=params, headers=HEADERS, timeout=15)
+            if r.status_code == 200:
+                soup = BeautifulSoup(r.text, "html.parser")
+                for link in soup.select("a.result__a"):
+                    title = link.get_text(strip=True)
+                    href = link.get("href", "")
+                    if href and "duckduckgo.com" not in href:
+                        results.append({
+                            "source": "Web (Concurso MPSP)",
+                            "term": term,
+                            "title": title[:200],
+                            "url": href,
+                            "snippet": "",
+                            "date": date.today().isoformat(),
+                        })
+        except Exception as e:
+            log.warning(f"Web geral concurso MPSP ({term}): {e}")
+        time.sleep(2)
+
+    log.info(f"Concurso MPSP: {len(results)} resultado(s)")
+    return results
 
 
 # ---------------------------------------------------------------------------
@@ -1035,6 +1179,13 @@ def main():
         todos_resultados.extend(buscar_web_geral())
     except Exception as e:
         msg = f"Busca Web Geral: erro inesperado — {e}"
+        log.error(msg)
+        erros_avisos.append(msg)
+
+    try:
+        todos_resultados.extend(buscar_concurso_mpsp())
+    except Exception as e:
+        msg = f"Concurso MPSP: erro inesperado — {e}"
         log.error(msg)
         erros_avisos.append(msg)
 
