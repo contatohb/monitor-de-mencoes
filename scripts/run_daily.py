@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-run_daily.py — Projeto Intellicore
+run_daily.py — Monitor de Menções
 ====================================
 Orquestra a execução diária completa:
   1. Verificação de idempotência via Supabase (garante execução única por dia)
@@ -234,7 +234,7 @@ def enviar_email(email_monitor: dict, regressoes: list) -> bool:
     if email_monitor:
         import re as _re
         assunto_monitor = email_monitor.get("assunto", "")
-        descricao = _re.sub(r'^(\[Intellicore\]?\s*)+', '', assunto_monitor).strip()
+        descricao = _re.sub(r'^(\[Menções\]?\s*)+', '', assunto_monitor).strip()
         descricao = _re.sub(r'\s*—\s*\d{2}/\d{2}/\d{4}$', '', descricao).strip()
         if not descricao:
             descricao = "Relatorio diario"
@@ -242,7 +242,7 @@ def enviar_email(email_monitor: dict, regressoes: list) -> bool:
     if not partes_assunto:
         partes_assunto.append("Relatorio diario")
 
-    assunto = f"[Pessoais] Intellicore Menções — {' | '.join(partes_assunto)} — {hoje}"
+    assunto = f"[Pessoais] Menções — {' | '.join(partes_assunto)} — {hoje}"
 
     # Obter corpo HTML
     html_corpo = ""
@@ -256,7 +256,7 @@ def enviar_email(email_monitor: dict, regressoes: list) -> bool:
     if not html_corpo:
         log.warning("Corpo HTML vazio — usando fallback texto simples")
         html_corpo = (
-            f"<html><body><p>Monitor Intellicore — {hoje}</p>"
+            f"<html><body><p>Monitor de Menções — {hoje}</p>"
             "<p>Nenhum resultado novo encontrado nesta execução.</p>"
             "<p>Termos monitorados: Hudson Viana Borges | CPF 828.258.071-68 | CNPJ 32.309.482/0001-52</p>"
             "</body></html>"
@@ -294,7 +294,7 @@ def enviar_email(email_monitor: dict, regressoes: list) -> bool:
 # ---------------------------------------------------------------------------
 
 def main():
-    parser = argparse.ArgumentParser(description="Execução diária do Intellicore Monitor")
+    parser = argparse.ArgumentParser(description="Execução diária do Monitor de Menções")
     parser.add_argument("--force-send", action="store_true",
                         help="Envia email mesmo sem resultados novos")
     parser.add_argument("--health-only", action="store_true",
@@ -304,7 +304,7 @@ def main():
     args = parser.parse_args()
 
     log.info("=" * 60)
-    log.info("Intellicore run_daily — Iniciando")
+    log.info("Monitor de Menções — Iniciando")
     log.info(f"Data/hora: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
     log.info("=" * 60)
 
@@ -358,7 +358,7 @@ def main():
 
     # ── Resumo final ──────────────────────────────────────────────────────────
     log.info("\n" + "=" * 60)
-    log.info("Intellicore run_daily — Concluído")
+    log.info("Monitor de Menções — Concluído")
     log.info(f"Data/hora: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
     log.info(f"Email enviado: {'Sim' if ok_envio else 'Nao'}")
     log.info(f"Regressoes: {len(regressoes)}")
