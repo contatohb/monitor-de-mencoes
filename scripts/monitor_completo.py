@@ -1016,87 +1016,79 @@ def registrar_email_pendente(assunto: str, corpo: str) -> None:
 # Palavras que DEVEM aparecer no conteúdo para o resultado ser relevante
 
 # ─────────────────────────────────────────────────────────────
-# Concurso MPSP 04/2025 — Monitoramento preciso
+# Concurso MPSP 04/2025 — Monitoramento CIRÚRGICO
+# ─────────────────────────────────────────────────────────────
 # Edital: Concurso Público Nº 04/2025 – Analista Técnico Científico do MPSP
 # Cargo: Médico Veterinário (ATC-1.23) — Macrorregião I (Capital)
-# Organizadora: VUNESP
-# Publicações oficiais: DOE-SP (Caderno Executivo, Atos de Gestão e Despesas)
+# Organizadora: VUNESP  |  Publicações oficiais: DOE-SP
 # Cronograma: Inscrições 02/09-07/10/2025, Prova 14/12/2025
+#
+# ESTRATÉGIA v6 (02/04/2026):
+# A Querido Diário API busca termos em diários INTEIROS (não por frase exata).
+# Qualquer combinação de termos genéricos retorna 10.000+ resultados de
+# prefeituras aleatórias. Por isso:
+#
+#   DOE-SP  → busca APENAS "Hudson Viana Borges" (nome pessoal)
+#   VUNESP  → DDG site:vunesp.com.br com termos ultra-específicos
+#   DOU     → DDG site:in.gov.br com termos ultra-específicos
+#
+# O monitor genérico (buscar_dou, buscar_querido_diario, buscar_web_geral)
+# já busca "Hudson Viana Borges" em todas as fontes. A função MPSP
+# complementa com buscas específicas na VUNESP e DOU por fase do concurso.
 # ─────────────────────────────────────────────────────────────
+
 
 def _resultado_relevante_mpsp(title: str, snippet: str) -> bool:
     """
-    Filtro de relevância cirúrgico para o Concurso MPSP 04/2025.
-    Retorna True SOMENTE se o conteúdo tiver relação comprovável
-    com este concurso específico ou com o candidato Hudson Viana Borges.
+    Filtro ULTRA-RESTRITIVO para resultados do Concurso MPSP 04/2025.
 
-    Regras:
-    1. Menção direta ao nome do candidato → SEMPRE relevante
-    2. Identificadores únicos do concurso (04/2025 + MPSP contexto,
-       ATC-1.23, edital 78/2025, Processo 247/24) → relevante
-    3. "04/2025" sozinho NÃO basta — precisa de contexto de concurso/MPSP
-    4. Termos genéricos sem identificador do concurso → descartado
+    Aceita SOMENTE se o conteúdo tiver:
+    1. Nome do candidato "Hudson Viana Borges" / "Hudson Borges"
+    2. Identificador ÚNICO do concurso (ATC-1.23, edital 78/2025, processo 247/24)
+    3. COMBINAÇÃO TRIPLA: concurso 04/2025 + ministério público + SP
+       (exige os 3 simultaneamente para evitar falsos positivos de prefeituras)
+    4. Analista técnico científico + veterinário + MPSP (combinação tripla)
     """
     texto = (title + " " + snippet).lower()
 
-    # ── Regra 1: nome do candidato → sempre relevante ──
+    # ── Regra 1: nome do candidato → SEMPRE relevante ──
     if "hudson viana" in texto or "hudson borges" in texto:
         return True
 
-    # ── Regra 2: identificadores únicos (não confundem com datas) ──
+    # ── Regra 2: identificadores que são 100% únicos deste concurso ──
     unique_ids = [
-        "atc-1.23",             # código do cargo
-        "atc 1.23",             # variação sem hífen
-        "edital 78/2025",       # edital de convocação
-        "78/2025",              # referência ao edital
-        "processo 247/24",      # processo administrativo
-        "dg-mp nº 247",         # processo DG-MP
-        "dg-mp 247",            # variação
-        "concurso público nº 04/2025",  # nome oficial completo
-        "concurso nº 04/2025",  # variação sem "público"
-        "concurso público n. 04/2025",  # variação
-        "concurso n. 04/2025",  # variação
+        "atc-1.23", "atc 1.23",
+        "processo 247/24", "dg-mp nº 247", "dg-mp 247",
     ]
     if any(uid in texto for uid in unique_ids):
         return True
 
-    # ── Regra 3: "04/2025" ou "04-2025" + contexto MPSP/concurso ──
-    has_04_2025 = ("04/2025" in texto or "04-2025" in texto or "nº 04" in texto)
-    if has_04_2025:
-        mpsp_context = [
-            "ministério público",
-            "mp-sp", "mpsp", "mp sp", "mp/sp",
-            "concurso",
-
-            "nomeação", "nomeacao",
-            "convocação", "convocacao",
-            "homologação", "homologacao",
-            "analista técnico", "analista tecnico",
-            "veterinário", "veterinario",
-            "vunesp",
-        ]
-        if any(ctx in texto for ctx in mpsp_context):
-            return True
-
-    # ── Regra 4: combinação "analista técnico científico" + "veterinário" + MPSP ──
-    has_atc = ("analista técnico" in texto or "analista tecnico" in texto)
-    has_vet = ("veterinário" in texto or "veterinario" in texto)
+    # ── Regra 3: "concurso" + "04/2025" + MPSP (precisa dos 3) ──
+    has_concurso = "concurso" in texto
+    has_04_2025 = "04/2025" in texto or "04-2025" in texto
     has_mpsp = any(m in texto for m in [
-        "ministério público", "mp-sp", "mpsp", "mp sp",
-        "são paulo", "sao paulo",
+        "ministério público do estado de são paulo",
+        "ministério público do estado de sp",
+        "mp-sp", "mpsp",
     ])
-    if has_atc and has_vet and has_mpsp:
+    # Variação: "concurso nº 04/2025" + MP genérico é OK
+    has_concurso_num = ("concurso nº 04/2025" in texto or
+                        "concurso público nº 04/2025" in texto or
+                        "concurso n. 04/2025" in texto)
+    has_mp_generic = "ministério público" in texto
+
+    if has_concurso_num and has_mp_generic:
+        return True
+    if has_concurso and has_04_2025 and has_mpsp:
         return True
 
-    # ── Regra 5: fase do concurso + identificador ──
-    fases = ["nomeação", "convocação", "homologação", "resultado final",
-             "classificação", "prova objetiva", "gabarito", "posse",
-             "inspeção médica", "estágio probatório"]
-    has_fase = any(f in texto for f in fases)
-    if has_fase and has_mpsp and has_vet:
+    # ── Regra 4: analista técnico + veterinário + MPSP ──
+    has_atc = "analista técnico" in texto or "analista tecnico" in texto
+    has_vet = "veterinário" in texto or "veterinario" in texto
+    if has_atc and has_vet and (has_mpsp or has_mp_generic):
         return True
 
-    # Não passou em nenhuma regra → genérico → descartado
+    # Não passou → descartado
     return False
 
 
@@ -1105,29 +1097,27 @@ def buscar_concurso_mpsp() -> list[dict]:
     Monitora publicações do Concurso Público Nº 04/2025 do MPSP
     (Analista Técnico Científico — Médico Veterinário ATC-1.23).
 
-    Fontes:
-    1. DOE-SP via Querido Diário API (publicação oficial do concurso)
-    2. VUNESP via DuckDuckGo (organizadora da banca)
-    3. DOU via DuckDuckGo (publicações federais mencionando o concurso)
+    ESTRATÉGIA v6:
+    1. DOE-SP: busca SOMENTE "Hudson Viana Borges" (nome pessoal)
+       → A Querido Diário API retorna diários inteiros, então termos
+         genéricos geram milhares de falsos positivos de prefeituras.
+       → O monitor genérico já busca pelo nome em todas as fontes.
+       → Aqui buscamos especificamente no DOE-SP de São Paulo.
 
-    Filtro cirúrgico: só inclui resultados com vínculo comprovado
-    ao Concurso 04/2025 MPSP ou ao candidato Hudson Viana Borges.
+    2. VUNESP via DDG: busca frases exatas sobre o concurso
+       → DDG faz matching real de frase, ao contrário da API QD.
+
+    3. DOU via DDG: busca frases exatas sobre o concurso
+       → Publicações federais (nomeação, homologação).
     """
     results = []
     descartados = 0
     log.info("Buscando atualizações do Concurso MPSP 04/2025 (Médico Veterinário ATC-1.23)...")
 
     # ── 1. DOE-SP via Querido Diário API ──────────────────────────────────
-    # O DOE-SP é o meio oficial de publicação do concurso.
-    # Buscamos termos específicos que só apareceriam em publicações reais.
+    # APENAS busca pelo nome pessoal. Termos genéricos retornam 10k+ falsos positivos.
     api_url = "https://api.queridodiario.ok.org.br/api/gazettes"
     doe_terms = [
-        '"concurso" "04/2025" "ministério público"',
-        '"concurso" "04/2025" "analista técnico"',
-        '"nomeação" "analista técnico científico" "ministério público"',
-        '"convocação" "04/2025" "ministério público"',
-        '"homologação" "04/2025" "ministério público"',
-        '"ATC-1.23"',
         '"Hudson Viana Borges"',
     ]
     for term in doe_terms:
@@ -1135,7 +1125,7 @@ def buscar_concurso_mpsp() -> list[dict]:
             params = {
                 "querystring": term,
                 "territory_id": "3550308",
-                "size": 5,
+                "size": 10,
                 "sort_by": "relevance",
             }
             r = get_page(api_url, params=params, headers=HEADERS_JSON)
@@ -1146,16 +1136,11 @@ def buscar_concurso_mpsp() -> list[dict]:
                 excerpts = g.get("excerpts", [])
                 snippet = excerpts[0][:400] if excerpts else ""
                 gazette_date = g.get("date", "")
-                title = f"[DOE-SP {gazette_date}] {term.replace(chr(34), '')[:80]}"
-                # FILTRO cirúrgico
-                if not _resultado_relevante_mpsp(title, snippet):
-                    descartados += 1
-                    log.debug(f"  DOE-SP descartado (genérico): {title[:60]}")
-                    continue
+                title = f"[DOE-SP {gazette_date}] Menção a Hudson Viana Borges"
                 direct_url = g.get("url", "") or g.get("txt_url", "") or g.get("file_url", "")
                 results.append({
                     "source": "DOE-SP (Concurso MPSP 04/2025)",
-                    "term": term.replace('"', ''),
+                    "term": "Hudson Viana Borges",
                     "title": title,
                     "url": direct_url,
                     "snippet": snippet,
@@ -1165,17 +1150,14 @@ def buscar_concurso_mpsp() -> list[dict]:
             log.warning(f"DOE-SP concurso MPSP ({term}): {e}")
         time.sleep(1)
 
-    log.info(f"  DOE-SP: {len(results)} relevante(s), {descartados} descartado(s)")
+    log.info(f"  DOE-SP (nome pessoal): {len(results)} resultado(s)")
     count_doe = len(results)
-    descartados_doe = descartados
 
     # ── 2. VUNESP via DuckDuckGo ──────────────────────────────────────────
-    # VUNESP é a organizadora. Buscamos no site deles por publicações
-    # específicas deste concurso.
+    # DDG faz matching real de frase exata — muito mais preciso que a API QD.
     vunesp_terms = [
-        '"concurso 04/2025" "ministério público" site:vunesp.com.br',
-        '"analista técnico científico" "ministério público" veterinário site:vunesp.com.br',
-        '"ATC-1.23" site:vunesp.com.br',
+        '"concurso público nº 04/2025" "ministério público" site:vunesp.com.br',
+        '"analista técnico científico" "04/2025" veterinário site:vunesp.com.br',
         '"Hudson Viana Borges" site:vunesp.com.br',
     ]
     for term in vunesp_terms:
@@ -1193,10 +1175,9 @@ def buscar_concurso_mpsp() -> list[dict]:
                     parent = link_el.find_parent("div", class_="result")
                     snippet_el = parent.select_one(".result__snippet") if parent else None
                     snippet = snippet_el.get_text(strip=True) if snippet_el else ""
-                    # FILTRO cirúrgico
                     if not _resultado_relevante_mpsp(title, snippet):
                         descartados += 1
-                        log.debug(f"  VUNESP descartado (genérico): {title[:60]}")
+                        log.debug(f"  VUNESP descartado: {title[:60]}")
                         continue
                     results.append({
                         "source": "VUNESP (Concurso MPSP 04/2025)",
@@ -1210,17 +1191,14 @@ def buscar_concurso_mpsp() -> list[dict]:
             log.warning(f"VUNESP concurso MPSP: {e}")
         time.sleep(2)
 
-    log.info(f"  VUNESP: {len(results) - count_doe} relevante(s), {descartados - descartados_doe} descartado(s)")
+    log.info(f"  VUNESP: {len(results) - count_doe} relevante(s), {descartados} descartado(s)")
     count_vunesp = len(results)
     descartados_vunesp = descartados
 
     # ── 3. DOU via DuckDuckGo ─────────────────────────────────────────────
-    # DOU é SPA Liferay — scraping direto não funciona. Usamos DDG.
-    # Buscamos publicações federais que mencionem o concurso do MPSP.
     dou_terms = [
-        '"concurso 04/2025" "ministério público" "são paulo" site:in.gov.br',
-        '"analista técnico científico" "ministério público" "são paulo" nomeação site:in.gov.br',
-        '"ATC-1.23" "ministério público" site:in.gov.br',
+        '"concurso público nº 04/2025" "ministério público" "são paulo" site:in.gov.br',
+        '"analista técnico científico" "04/2025" "ministério público" nomeação site:in.gov.br',
         '"Hudson Viana Borges" site:in.gov.br',
     ]
     for term in dou_terms:
@@ -1238,10 +1216,9 @@ def buscar_concurso_mpsp() -> list[dict]:
                     parent = link_el.find_parent("div", class_="result")
                     snippet_el = parent.select_one(".result__snippet") if parent else None
                     snippet = snippet_el.get_text(strip=True) if snippet_el else ""
-                    # FILTRO cirúrgico
                     if not _resultado_relevante_mpsp(title, snippet):
                         descartados += 1
-                        log.debug(f"  DOU descartado (genérico): {title[:60]}")
+                        log.debug(f"  DOU descartado: {title[:60]}")
                         continue
                     results.append({
                         "source": "DOU (Concurso MPSP 04/2025)",
@@ -1256,7 +1233,7 @@ def buscar_concurso_mpsp() -> list[dict]:
         time.sleep(2)
 
     log.info(f"  DOU: {len(results) - count_vunesp} relevante(s), {descartados - descartados_vunesp} descartado(s)")
-    log.info(f"Concurso MPSP 04/2025: {len(results)} relevante(s) de {len(results) + descartados} encontrado(s)")
+    log.info(f"Concurso MPSP 04/2025 TOTAL: {len(results)} relevante(s), {descartados} descartado(s)")
     return results
 
 
