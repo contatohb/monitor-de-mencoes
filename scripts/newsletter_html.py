@@ -1,5 +1,5 @@
 """
-newsletter_html.py — Gerador de HTML premium para a newsletter do Intellicore Monitor.
+newsletter_html.py — Gerador de HTML premium para a newsletter do Monitor de Menções.
 
 Responsabilidades:
   - Renderizar o template HTML com os dados da execução do monitor
@@ -363,7 +363,7 @@ def gerar_html_newsletter(
     fontes_status: dict | None = None,
 ) -> str:
     """
-    Gera o HTML completo da newsletter Intellicore Monitor.
+    Gera o HTML completo da newsletter Monitor de Menções Monitor.
 
     Args:
         resultados:    Lista de dicts com resultados novos do monitor.
@@ -441,7 +441,7 @@ def gerar_html_newsletter(
 def gerar_assunto(resultados: list[dict], alertas: list[str] | None = None, data: str | None = None) -> str:
     """
     Gera o assunto do email no formato:
-      [Intellicore] <descrição> — dd/mm/aaaa
+      [Menções] <descrição> — dd/mm/aaaa
     """
     if data is None:
         data = date.today().strftime("%d/%m/%Y")
@@ -450,12 +450,12 @@ def gerar_assunto(resultados: list[dict], alertas: list[str] | None = None, data
 
     if alertas:
         n = len(alertas)
-        return f"[Intellicore] ⚠ {n} alerta(s) de regressão — {data}"
+        return f"[Menções] ⚠ {n} alerta(s) de regressão — {data}"
     elif resultados:
         n = len(resultados)
-        return f"[Intellicore] 🔔 {n} menção(ões) nova(s) — {data}"
+        return f"[Menções] 🔔 {n} menção(ões) nova(s) — {data}"
     else:
-        return f"[Intellicore] Nenhum resultado novo — {data}"
+        return f"[Menções] Nenhum resultado novo — {data}"
 
 
 # ---------------------------------------------------------------------------
