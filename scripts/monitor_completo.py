@@ -999,32 +999,69 @@ def registrar_email_pendente(assunto: str, corpo: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+
 # ---------------------------------------------------------------------------
 # FONTE 7: Acompanhamento Concurso MPSP 04/2025
 # Cargo: Analista Técnico-Científico — Médico Veterinário
 # Macrorregião I (Capital) | Edital 78/2025 | Banca VUNESP
 # Posição: 3º geral / 2º PCD
-# Monitora: nomeações, convocações, homologação e menções do candidato
 # ---------------------------------------------------------------------------
+# POLÍTICA DE FILTRAGEM:
+#   Só inclui resultado no email se o conteúdo (título + snippet) contiver
+#   ao menos uma PALAVRA-CHAVE DE VALIDAÇÃO que comprove relevância direta
+#   ao concurso 04/2025 ou ao candidato Hudson Viana Borges.
+#   Resultados genéricos (ex: qualquer "nomeação veterinário MP") são descartados.
+# ---------------------------------------------------------------------------
+
+# Palavras que DEVEM aparecer no conteúdo para o resultado ser relevante
+_MPSP_VALIDATION_KEYWORDS = [
+    "hudson viana",
+    "hudson borges",
+    "04/2025",
+    "04-2025",
+    "nº 04",
+    "n. 04",
+    "edital 78",
+    "78/2025",
+    "analista técnico-científico",
+    "analista técnico científico",
+    "atc veterinário",
+    "atc - veterinário",
+    "macrorregião i",
+    "concurso público nº 04",
+]
+
+
+def _resultado_relevante_mpsp(title: str, snippet: str) -> bool:
+    """
+    Retorna True somente se o título ou snippet contiver pelo menos uma
+    palavra-chave que comprove relação direta com o Concurso MPSP 04/2025
+    ou com o candidato Hudson Viana Borges.
+    """
+    texto = (title + " " + snippet).lower()
+    return any(kw in texto for kw in _MPSP_VALIDATION_KEYWORDS)
+
 
 def buscar_concurso_mpsp() -> list[dict]:
     """
-    Monitora publicações específicas do Concurso MPSP 04/2025 em 3 fontes:
+    Monitora publicações do Concurso MPSP 04/2025 em 3 fontes:
     1. DOE-SP (Diário Oficial do Estado de SP) via Querido Diário API
     2. VUNESP via DuckDuckGo (site bloqueia scraping direto)
     3. DOU via DuckDuckGo (DOU é SPA Liferay, scraping não funciona)
-    Também busca menção direta ao nome "Hudson Viana Borges" nessas fontes.
-    Todos os resultados incluem URLs diretas clicáveis.
+
+    FILTRO: Só inclui resultados que mencionem diretamente o concurso 04/2025,
+    o edital 78/2025, ou o nome "Hudson Viana Borges".
+    Resultados genéricos são descartados.
     """
     results = []
+    descartados = 0
     log.info("Buscando atualizações do Concurso MPSP 04/2025 (Veterinário)...")
 
     # ── 1. DOE-SP via Querido Diário API ──────────────────────────────────
     api_url = "https://api.queridodiario.ok.org.br/api/gazettes"
     doe_terms = [
         '"concurso" "04/2025" "ministério público"',
-        '"analista técnico" "veterinário" "ministério público"',
-        '"nomeação" "ministério público" "veterinário"',
+        '"nomeação" "04/2025" "ministério público"',
         '"convocação" "04/2025" "ministério público"',
         '"homologação" "04/2025" "ministério público"',
         '"Hudson Viana Borges"',
@@ -1045,12 +1082,17 @@ def buscar_concurso_mpsp() -> list[dict]:
                 excerpts = g.get("excerpts", [])
                 snippet = excerpts[0][:400] if excerpts else ""
                 gazette_date = g.get("date", "")
-                # URL direta: campo 'url' (PDF) ou 'txt_url' (texto)
+                title = f"[DOE-SP {gazette_date}] {term.replace(chr(34), '')[:80]}"
+                # FILTRO: só incluir se relevante ao concurso 04/2025 ou ao candidato
+                if not _resultado_relevante_mpsp(title, snippet):
+                    descartados += 1
+                    log.debug(f"  DOE-SP descartado (genérico): {title[:60]}")
+                    continue
                 direct_url = g.get("url", "") or g.get("txt_url", "") or g.get("file_url", "")
                 results.append({
                     "source": "DOE-SP (Concurso MPSP)",
                     "term": term.replace('"', ''),
-                    "title": f"[DOE-SP {gazette_date}] {term.replace(chr(34), '')[:80]}",
+                    "title": title,
                     "url": direct_url,
                     "snippet": snippet,
                     "date": gazette_date or date.today().isoformat(),
@@ -1059,15 +1101,16 @@ def buscar_concurso_mpsp() -> list[dict]:
             log.warning(f"DOE-SP concurso MPSP ({term}): {e}")
         time.sleep(1)
 
-    log.info(f"  DOE-SP: {len(results)} resultado(s)")
+    log.info(f"  DOE-SP: {len(results)} relevante(s), {descartados} descartado(s)")
     count_doe = len(results)
+    descartados_doe = descartados
 
     # ── 2. VUNESP via DuckDuckGo ──────────────────────────────────────────
     vunesp_terms = [
-        'concurso 04/2025 "ministério público" site:vunesp.com.br',
-        '"analista técnico" veterinário nomeação site:vunesp.com.br',
+        '"concurso 04/2025" "ministério público" site:vunesp.com.br',
+        '"edital 78/2025" site:vunesp.com.br',
         '"Hudson Viana Borges" site:vunesp.com.br',
-        'edital 78/2025 "ministério público" site:vunesp.com.br',
+        '"analista técnico-científico" veterinário nomeação site:vunesp.com.br',
     ]
     for term in vunesp_terms:
         try:
@@ -1078,34 +1121,37 @@ def buscar_concurso_mpsp() -> list[dict]:
                 for link_el in soup.select("a.result__a"):
                     title = link_el.get_text(strip=True)
                     raw_href = link_el.get("href", "")
-                    # Extrair URL real do redirect DDG
                     href = _extrair_url_ddg(raw_href)
-                    if href and "duckduckgo.com" not in href:
-                        parent = link_el.find_parent("div", class_="result")
-                        snippet_el = parent.select_one(".result__snippet") if parent else None
-                        snippet = snippet_el.get_text(strip=True) if snippet_el else ""
-                        results.append({
-                            "source": "VUNESP (Concurso MPSP)",
-                            "term": term.split("site:")[0].strip().replace('"', ''),
-                            "title": title[:200],
-                            "url": href,
-                            "snippet": snippet[:400],
-                            "date": date.today().isoformat(),
-                        })
+                    if not href or "duckduckgo.com" in href:
+                        continue
+                    parent = link_el.find_parent("div", class_="result")
+                    snippet_el = parent.select_one(".result__snippet") if parent else None
+                    snippet = snippet_el.get_text(strip=True) if snippet_el else ""
+                    # FILTRO: só incluir se relevante
+                    if not _resultado_relevante_mpsp(title, snippet):
+                        descartados += 1
+                        log.debug(f"  VUNESP descartado (genérico): {title[:60]}")
+                        continue
+                    results.append({
+                        "source": "VUNESP (Concurso MPSP)",
+                        "term": term.split("site:")[0].strip().replace('"', ''),
+                        "title": title[:200],
+                        "url": href,
+                        "snippet": snippet[:400],
+                        "date": date.today().isoformat(),
+                    })
         except Exception as e:
             log.warning(f"VUNESP concurso MPSP: {e}")
         time.sleep(2)
 
-    log.info(f"  VUNESP: {len(results) - count_doe} resultado(s)")
+    log.info(f"  VUNESP: {len(results) - count_doe} relevante(s), {descartados - descartados_doe} descartado(s)")
     count_vunesp = len(results)
+    descartados_vunesp = descartados
 
     # ── 3. DOU via DuckDuckGo ─────────────────────────────────────────────
-    # O site in.gov.br é um SPA (Liferay) — scraping direto retorna 0 itens.
-    # Usar DuckDuckGo com site:in.gov.br como alternativa confiável.
     dou_terms = [
-        '"ministério público" "são paulo" "nomeação" "veterinário" site:in.gov.br',
-        '"ministério público" "04/2025" "nomeação" site:in.gov.br',
-        '"ministério público" "são paulo" "convocação" "analista técnico" site:in.gov.br',
+        '"04/2025" "ministério público" "nomeação" site:in.gov.br',
+        '"04/2025" "ministério público" "convocação" site:in.gov.br',
         '"Hudson Viana Borges" site:in.gov.br',
     ]
     for term in dou_terms:
@@ -1118,24 +1164,30 @@ def buscar_concurso_mpsp() -> list[dict]:
                     title = link_el.get_text(strip=True)
                     raw_href = link_el.get("href", "")
                     href = _extrair_url_ddg(raw_href)
-                    if href and "duckduckgo.com" not in href:
-                        parent = link_el.find_parent("div", class_="result")
-                        snippet_el = parent.select_one(".result__snippet") if parent else None
-                        snippet = snippet_el.get_text(strip=True) if snippet_el else ""
-                        results.append({
-                            "source": "DOU (Concurso MPSP)",
-                            "term": term.split("site:")[0].strip().replace('"', ''),
-                            "title": title[:200],
-                            "url": href,
-                            "snippet": snippet[:400],
-                            "date": date.today().isoformat(),
-                        })
+                    if not href or "duckduckgo.com" in href:
+                        continue
+                    parent = link_el.find_parent("div", class_="result")
+                    snippet_el = parent.select_one(".result__snippet") if parent else None
+                    snippet = snippet_el.get_text(strip=True) if snippet_el else ""
+                    # FILTRO: só incluir se relevante
+                    if not _resultado_relevante_mpsp(title, snippet):
+                        descartados += 1
+                        log.debug(f"  DOU descartado (genérico): {title[:60]}")
+                        continue
+                    results.append({
+                        "source": "DOU (Concurso MPSP)",
+                        "term": term.split("site:")[0].strip().replace('"', ''),
+                        "title": title[:200],
+                        "url": href,
+                        "snippet": snippet[:400],
+                        "date": date.today().isoformat(),
+                    })
         except Exception as e:
             log.warning(f"DOU concurso MPSP ({term}): {e}")
         time.sleep(2)
 
-    log.info(f"  DOU: {len(results) - count_vunesp} resultado(s)")
-    log.info(f"Concurso MPSP total: {len(results)} resultado(s)")
+    log.info(f"  DOU: {len(results) - count_vunesp} relevante(s), {descartados - descartados_vunesp} descartado(s)")
+    log.info(f"Concurso MPSP: {len(results)} relevante(s) de {len(results) + descartados} encontrado(s)")
     return results
 
 # ---------------------------------------------------------------------------
