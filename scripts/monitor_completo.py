@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-monitor_completo.py — Projeto Intellicore
+monitor_completo.py — Monitor de Menções
 Busca menções de Hudson Viana Borges (nome, CPF e CNPJ) em fontes oficiais,
 bancas de concursos e editais culturais. Envia email apenas com resultados novos.
 
@@ -944,7 +944,7 @@ def filtrar_novos(results: list[dict], seen: set) -> tuple[list[dict], set, dict
 
 def formatar_email(novos: list[dict], erros: list[str] = None) -> str:
     """
-    Gera o HTML premium da newsletter Intellicore Monitor.
+    Gera o HTML premium da newsletter Monitor de Menções.
     Todas as datas são formatadas no padrão dd/mm/aaaa.
     """
     hoje = datetime.now().strftime("%d/%m/%Y %H:%M")
@@ -1135,21 +1135,15 @@ def buscar_concurso_mpsp() -> list[dict]:
                 continue
             data = r.json()
             for g in data.get("gazettes", []):
-                # Filtrar: aceitar apenas SP (a API retorna de outros estados)
                 state_code = g.get("state_code", "")
                 territory_name = g.get("territory_name", "desconhecido")
-                territory_id = g.get("territory_id", "")
-                if state_code and state_code != "SP":
-                    descartados += 1
-                    log.debug(f"  DOE descartado (fora de SP): {territory_name}/{state_code}")
-                    continue
                 excerpts = g.get("excerpts", [])
                 snippet = excerpts[0][:400] if excerpts else ""
                 gazette_date = g.get("date", "")
-                title = f"[DOE {territory_name} {gazette_date}] Menção a Hudson Viana Borges"
+                title = f"[DOE-{state_code or 'BR'} {territory_name} {gazette_date}] Menção a Hudson Viana Borges"
                 direct_url = g.get("url", "") or g.get("txt_url", "") or g.get("file_url", "")
                 results.append({
-                    "source": f"DOE-SP {territory_name} (Menção pessoal)",
+                    "source": f"DOE-{state_code or 'BR'} {territory_name} (Menção pessoal)",
                     "term": "Hudson Viana Borges",
                     "title": title,
                     "url": direct_url,
@@ -1160,7 +1154,7 @@ def buscar_concurso_mpsp() -> list[dict]:
             log.warning(f"DOE-SP concurso MPSP ({term}): {e}")
         time.sleep(1)
 
-    log.info(f"  DOE-SP (nome pessoal): {len(results)} resultado(s), {descartados} fora de SP descartado(s)")
+    log.info(f"  DOE (nome pessoal): {len(results)} resultado(s)")
     count_doe = len(results)
 
 
@@ -1249,7 +1243,7 @@ def buscar_concurso_mpsp() -> list[dict]:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Monitor Intellicore de menções")
+    parser = argparse.ArgumentParser(description="Monitor de menções")
     parser.add_argument(
         "--force-send",
         action="store_true",
@@ -1263,7 +1257,7 @@ def main():
     args = parser.parse_args()
 
     log.info("=" * 60)
-    log.info("Intellicore Monitor — Iniciando execução")
+    log.info("Monitor de Menções — Iniciando execução")
     log.info(f"Data/hora: {datetime.now().isoformat()}")
     log.info(f"Termos: {SEARCH_TERMS}")
     log.info("=" * 60)
@@ -1366,7 +1360,7 @@ def main():
     else:
         log.info("Sem resultados novos e --force-send não ativado. Email não registrado.")
 
-    log.info("Intellicore Monitor — Execução concluída")
+    log.info("Monitor de Menções — Execução concluída")
     log.info("=" * 60)
 
 
