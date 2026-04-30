@@ -334,7 +334,8 @@ def main():
         sys.exit(0 if not regressoes else 1)
 
     # ── 2. Monitor de menções ─────────────────────────────────────────────────
-    email_monitor = executar_monitor(force_send=args.force_send)
+    # Sempre enviar email diário (mesmo sem novidades — email de status é esperado)
+    email_monitor = executar_monitor(force_send=True)
 
     # ── 3. Envio do email ─────────────────────────────────────────────────────
     ok_envio = False
