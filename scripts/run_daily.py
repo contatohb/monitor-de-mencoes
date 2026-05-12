@@ -264,7 +264,7 @@ def enviar_email(email_monitor: dict, regressoes: list) -> bool:
 
     log.info(f"Enviando email: {assunto}")
     ok = enviar_email_html(
-        to="huddsong@gmail.com",
+        to="huddsonviana@gmail.com",
         subject=assunto,
         html_body=html_corpo,
     )

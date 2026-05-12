@@ -5,7 +5,7 @@ enviar_email_html.py
 Envia email HTML via SMTP do Gmail usando App Password.
 
 Configuração:
-  - GMAIL_SMTP_USER : endereço Gmail (padrão: huddsong@gmail.com)
+  - GMAIL_SMTP_USER : endereço Gmail (padrão: huddsonviana@gmail.com)
   - GMAIL_APP_PASSWORD : senha de aplicativo de 16 caracteres (sem espaços)
 
 Uso como módulo:
@@ -33,7 +33,7 @@ SMTP_HOST = "smtp.gmail.com"
 SMTP_PORT = 587  # STARTTLS
 
 # Credenciais — lidas de variáveis de ambiente ou valores padrão
-GMAIL_USER = os.getenv("GMAIL_SMTP_USER", "huddsong@gmail.com")
+GMAIL_USER = os.getenv("GMAIL_SMTP_USER", "huddsonviana@gmail.com")
 # App Password gerada em myaccount.google.com/apppasswords
 # Armazenada sem espaços: "mwnv dnii uggt aikl" → "mwnvdniiuugtaikl"
 _RAW_APP_PASS = os.getenv("GMAIL_APP_PASSWORD", "mwnvdniiuggtaikl")
@@ -148,7 +148,7 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="Testar envio de email HTML via SMTP")
-    parser.add_argument("--to", default="huddsong@gmail.com", help="Destinatário")
+    parser.add_argument("--to", default="huddsonviana@gmail.com", help="Destinatário")
     parser.add_argument("--subject", default="[TESTE] Email HTML — HB Advisory Intellicore")
     parser.add_argument("--html-file", help="Arquivo HTML para enviar")
     args = parser.parse_args()

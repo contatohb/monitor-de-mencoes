@@ -987,7 +987,7 @@ def registrar_email_pendente(assunto: str, corpo: str) -> None:
         "assunto": assunto,
         "corpo": corpo,
         "content_type": "text/html",
-        "destinatario": "huddsong@gmail.com",
+        "destinatario": "huddsonviana@gmail.com",
         "timestamp": datetime.now().strftime("%d/%m/%Y %H:%M"),
         "enviado": False,
     }

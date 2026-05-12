@@ -15,7 +15,7 @@ Endpoints:
 
 Variáveis de ambiente obrigatórias:
   INTERNAL_API_KEY      — token Bearer para autenticação interna
-  GMAIL_SMTP_USER       — endereço Gmail (padrão: huddsong@gmail.com)
+  GMAIL_SMTP_USER       — endereço Gmail (padrão: huddsonviana@gmail.com)
   GMAIL_APP_PASSWORD    — senha de aplicativo Gmail de 16 caracteres
   SUPABASE_URL          — URL do projeto Supabase
   SUPABASE_SERVICE_ROLE_KEY — chave service_role do Supabase

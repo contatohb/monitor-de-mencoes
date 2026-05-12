@@ -9,7 +9,7 @@ services:
       - key: INTERNAL_API_KEY
         generateValue: true
       - key: GMAIL_SMTP_USER
-        value: huddsong@gmail.com
+        value: huddsonviana@gmail.com
       - key: GMAIL_APP_PASSWORD
         sync: false
       - key: SUPABASE_URL
