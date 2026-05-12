@@ -1,3 +1,4 @@
+import os
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
@@ -212,9 +213,37 @@ def executar_monitor(force_send: bool = False) -> dict:
 # Envio do email
 # ---------------------------------------------------------------------------
 
+def _send_via_mailgun(subject: str, html: str, recipient: str) -> bool:
+    """Envia via Mailgun (server-side, sem dependências locais)."""
+    api_key = os.getenv("MAILGUN_API_KEY", "").strip()
+    domain  = os.getenv("MAILGUN_DOMAIN", "hb-advisory.com.br").strip()
+    from_em = os.getenv("FROM_EMAIL", f"Intellicore Alertas <alertas@{domain}>")
+    if not api_key:
+        return False
+    try:
+        import requests as _req
+        base = os.getenv("MAILGUN_BASE_URL", "https://api.mailgun.net").rstrip("/")
+        if not base.endswith("/v3"):
+            base += "/v3"
+        resp = _req.post(f"{base}/{domain}/messages",
+                         auth=("api", api_key),
+                         data={"from": from_em, "to": [recipient],
+                               "subject": subject, "html": html, "text": " "},
+                         timeout=30)
+        if resp.status_code == 200:
+            log.info(f"Email enviado via Mailgun para {recipient}")
+            return True
+        log.error(f"Mailgun retornou {resp.status_code}: {resp.text[:200]}")
+        return False
+    except Exception as exc:
+        log.error(f"Erro Mailgun: {exc}")
+        return False
+
+
 def enviar_email(email_monitor: dict, regressoes: list) -> bool:
     """
-    Envia o email HTML via Gmail SMTP.
+    Envia o email HTML via Mailgun (primário) ou Gmail SMTP (fallback).
+    Destinatário lido de MONITOR_RECIPIENT (padrão: hudsonborges@hb-advisory.com.br).
     Retorna True se enviado com sucesso.
     """
     sys.path.insert(0, str(SCRIPTS_DIR))
@@ -263,11 +292,20 @@ def enviar_email(email_monitor: dict, regressoes: list) -> bool:
         )
 
     log.info(f"Enviando email: {assunto}")
-    ok = enviar_email_html(
-        to="huddsonviana@gmail.com",
-        subject=assunto,
-        html_body=html_corpo,
-    )
+    recipient = os.getenv("MONITOR_RECIPIENT", "hudsonborges@hb-advisory.com.br")
+
+    # Tentativa 1: Mailgun (server-side)
+    ok = _send_via_mailgun(assunto, html_corpo, recipient)
+
+    # Tentativa 2: SMTP Gmail (fallback)
+    if not ok:
+        try:
+            from enviar_email_html import enviar_email_html  # type: ignore
+            ok = enviar_email_html(to=recipient, subject=assunto, html_body=html_corpo)
+            if ok:
+                log.info(f"Email enviado via SMTP para {recipient}")
+        except Exception as e:
+            log.error(f"Fallback SMTP falhou: {e}")
 
     if ok:
         log.info("Email enviado com sucesso via Gmail SMTP")
