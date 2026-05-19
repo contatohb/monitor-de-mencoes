@@ -505,6 +505,9 @@ def buscar_querido_diario() -> list[dict]:
                     f" {g.get('date', '')}"
                 )
                 url = g.get("url", "") or g.get("txt_url", "") or g.get("file_url", "")
+                if not _resultado_relevante_pessoa(term, title, excerpt_com_termo):
+                    log.debug(f"  Querido Diário descartado (homônimo): {title[:60]}")
+                    continue
                 results.append({
                     "source": "Querido Diário",
                     "term": term,
@@ -560,6 +563,9 @@ def buscar_diarios_estaduais() -> list[dict]:
                         f" {g.get('date', '')}"
                     )
                     url = g.get("url", "") or g.get("txt_url", "") or g.get("file_url", "")
+                    if not _resultado_relevante_pessoa(term, title, excerpt_com_termo):
+                        log.debug(f"  Diário Estadual descartado (homônimo): {title[:60]}")
+                        continue
                     results.append({
                         "source": f"Diário Estadual ({estado})",
                         "term": term,
