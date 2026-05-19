@@ -35,8 +35,12 @@ jobs:
           retry_wait_seconds: 60
           command: python scripts/run_daily.py
         env:
-          GMAIL_SMTP_USER: huddsong@gmail.com
+          GMAIL_SMTP_USER: ${{ secrets.GMAIL_SMTP_USER }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          MONITOR_RECIPIENT: ${{ secrets.MONITOR_RECIPIENT }}
+          MAILGUN_API_KEY: ${{ secrets.MAILGUN_API_KEY }}
+          MAILGUN_DOMAIN: ${{ secrets.MAILGUN_DOMAIN }}
+          FROM_EMAIL: ${{ secrets.FROM_EMAIL }}
 
       - name: Notify on failure
         if: failure()
