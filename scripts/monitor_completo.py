@@ -135,6 +135,49 @@ SEARCH_TERMS_WEB = [
     "32.309.482/0001-52",
 ]
 
+# Termos que, isolados, são genéricos e precisam de desambiguação.
+_TERMOS_AMBIGUOS = {"hudson borges", "huddson viana"}
+
+# Palavras-chave que provam que o resultado é sobre Hudson Viana Borges
+# (e não um homônimo). Basta uma para validar.
+_CONTEXTO_HUDSON = [
+    "hb advisory",
+    "hb-advisory",
+    "hudson viana",
+    "médico veterinário",
+    "medico veterinario",
+    "syngenta",
+    "bayer",
+    "envu",
+    "bioagri",
+    "agrotóxico",
+    "agrotoxico",
+    "registro de agrotóxico",
+    "regulatory affairs",
+    "mpsp",
+    "ministério público de são paulo",
+    "concurso público nº 04/2025",
+    "analista técnico",
+    "atc-1.23",
+    "82825807168",
+    "828.258.071-68",
+    "32309482000152",
+    "32.309.482/0001-52",
+]
+
+
+def _resultado_relevante_pessoa(term: str, title: str, snippet: str) -> bool:
+    """
+    Para termos ambíguos ("Hudson Borges", "Huddson Viana"), exige ao menos
+    uma palavra-chave de contexto que confirme ser Hudson Viana Borges.
+    Termos específicos (CPF, CNPJ, "Hudson Viana Borges") sempre passam.
+    """
+    if term.lower() not in _TERMOS_AMBIGUOS:
+        return True  # termo específico o suficiente — não filtrar
+    texto = (title + " " + snippet).lower()
+    return any(ctx in texto for ctx in _CONTEXTO_HUDSON)
+
+
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
@@ -398,6 +441,9 @@ def buscar_dou() -> list[dict]:
                         if link and not link.startswith("http"):
                             link = "https://www.in.gov.br" + link
                     snippet = item.get_text(" ", strip=True)[:300]
+                    if not _resultado_relevante_pessoa(term, title, snippet):
+                        log.debug(f"  DOU descartado (homônimo): {title[:60]}")
+                        continue
                     results.append({
                         "source": "DOU",
                         "term": term,
@@ -904,6 +950,9 @@ def buscar_web_geral() -> list[dict]:
             # Validar: o termo deve aparecer no título ou snippet
             term_lower = term.lower()
             if term_lower in title.lower() or term_lower in snippet.lower():
+                if not _resultado_relevante_pessoa(term, title, snippet):
+                    log.debug(f"  Web Geral descartado (homônimo): {title[:60]}")
+                    continue
                 results.append({
                     "source": "Web Geral",
                     "term": term,
