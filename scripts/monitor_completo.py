@@ -1191,7 +1191,10 @@ def buscar_concurso_mpsp() -> list[dict]:
             data = r.json()
             for g in data.get("gazettes", []):
                 state_code = g.get("state_code", "")
-                territory_name = g.get("territory_name", "desconhecido")
+                # Normalizar territory_name: strip sufixo " (XX)" que a API QD adiciona
+                # inconsistentemente (ex: "Osasco (SP)" vs "Osasco") — causa hash diferente
+                import re as _re
+                territory_name = _re.sub(r'\s*\([A-Z]{2}\)\s*$', '', g.get("territory_name", "desconhecido")).strip()
                 excerpts = g.get("excerpts", [])
                 snippet = excerpts[0][:400] if excerpts else ""
                 gazette_date = g.get("date", "")
