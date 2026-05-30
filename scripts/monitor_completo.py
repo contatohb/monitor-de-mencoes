@@ -256,7 +256,13 @@ def save_seen(seen: set, new_ids: set = None, source_map: dict = None) -> None:
 
 
 def make_id(source: str, title: str, url: str = "") -> str:
-    raw = f"{source}|{title}|{url}"
+    # Para fontes DOE-*: a URL da API Querido Diário varia entre runs
+    # (campos url/txt_url/file_url retornados inconsistentemente).
+    # Usar apenas source+title, que são estáveis após normalização de territory_name.
+    if source.startswith("DOE-"):
+        raw = f"{source}|{title}"
+    else:
+        raw = f"{source}|{title}|{url}"
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
 
 
