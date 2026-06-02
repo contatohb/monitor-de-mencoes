@@ -48,6 +48,8 @@ DIAGNÓSTICO E CORREÇÕES (2026-03-17):
 
 import argparse
 import hashlib
+import io
+import re
 import json
 import logging
 import os
@@ -197,6 +199,10 @@ HEADERS_JSON = {
     **HEADERS,
     "Accept": "application/json, text/plain, */*",
 }
+
+# Cache global de IDs vistos — populado no main() antes das buscas.
+# Permite que buscar_proac_pdfs() evite baixar PDFs já processados.
+_SEEN_GLOBAL: set = set()
 
 # ---------------------------------------------------------------------------
 # Persistência de resultados vistos — SUPABASE EXCLUSIVO
@@ -783,9 +789,162 @@ def buscar_bancas() -> list[dict]:
 #   Instituto Unibanco: URL de busca corrigida para /?s= (WordPress)
 # ---------------------------------------------------------------------------
 
+
+# ──────────────────────────────────────────────────────────────────────────────
+# FONTE 5b: ProAC/CultSP — PDFs de Resultado (Azure Blob Storage)
+# Raspa páginas de edital individuais do IBM WebSphere do ProAC, extrai links
+# de PDF do Azure Blob Storage e verifica presença de CNPJ/nome nos resultados.
+# ──────────────────────────────────────────────────────────────────────────────
+
+_PROAC_RESULT_KWS = [
+    "resultado", "selecao", "selecionado", "aprovado",
+    "lista", "inscrit", "comunicado", "convocatoria", "final",
+]
+
+
+def buscar_proac_pdfs() -> list[dict]:
+    """
+    Raspa editais do ProAC/CultSP e verifica PDFs de resultado no Azure Blob
+    Storage para presença de CNPJ 32.309.482 / Hudson Viana Borges.
+
+    Fluxo:
+      1. Raspa /Fomento/Fomento_CultSP_Editais_e_PNAB e /Fomento/Programa_PNAB
+      2. Coleta links para páginas de edital individuais
+      3. Para cada edital (priorizando 2025/2026), extrai links de PDF do blob storage
+      4. Para PDFs de resultado NÃO vistos, baixa e verifica nome/CNPJ via pypdf
+      5. Retorna alertas para novos resultados encontrados
+    """
+    try:
+        from pypdf import PdfReader  # noqa: PLC0415
+    except ImportError:
+        log.warning("ProAC PDFs: pypdf não instalado — ignorando esta fonte")
+        return []
+
+    results = []
+    CULTSP_BASE = "https://www.cultura.sp.gov.br"
+    SEARCH_PATTERNS = ["HUDSON VIANA BORGES", "32.309.482", "OZ AS AVESSAS"]
+
+    # 1) Coletar links de edital das páginas de lista
+    edital_urls: dict = {}  # url -> titulo
+    for list_url in [
+        f"{CULTSP_BASE}/sec_cultura/Fomento/Fomento_CultSP_Editais_e_PNAB",
+        f"{CULTSP_BASE}/sec_cultura/Fomento/Programa_PNAB",
+    ]:
+        try:
+            r = requests.get(list_url, headers=HEADERS, timeout=20, verify=False)
+            if r.status_code != 200:
+                log.warning(f"ProAC PDFs: {list_url[-50:]} HTTP {r.status_code}")
+                continue
+            soup = BeautifulSoup(r.text, "html.parser")
+            for a in soup.find_all("a", href=True):
+                href = a["href"]
+                if "Arquivo_de_Editais" not in href:
+                    continue
+                full_url = href if href.startswith("http") else f"{CULTSP_BASE}{href}"
+                titulo = a.get_text(strip=True)[:80]
+                edital_urls[full_url] = titulo
+        except Exception as e:
+            log.warning(f"ProAC PDFs: erro ao listar editais: {e}")
+
+    log.info(f"ProAC PDFs: {len(edital_urls)} editais encontrados")
+
+    # 2) Priorizar editais recentes (2025/2026) e limitar total
+    def _prio(item):
+        u = item[0].lower()
+        return (("2025" in u or "2026" in u), u)
+
+    sorted_editais = sorted(edital_urls.items(), key=_prio, reverse=True)[:80]
+
+    pdf_checked = 0
+    for edital_url, edital_titulo in sorted_editais:
+        try:
+            r = requests.get(edital_url, headers=HEADERS, timeout=15, verify=False)
+            if r.status_code != 200:
+                continue
+
+            # Extrair links para PDFs no blob storage
+            blob_urls = re.findall(
+                r"https?://storageproac\.blob\.core\.windows\.net[^\s\"\'<>]+\.pdf",
+                r.text,
+                re.IGNORECASE,
+            )
+
+            for blob_url in blob_urls:
+                filename = blob_url.lower().rsplit("/", 1)[-1]
+
+                # Apenas PDFs com palavras-chave de resultado
+                if not any(kw in filename for kw in _PROAC_RESULT_KWS):
+                    continue
+
+                # Deduplicação antecipada — evita baixar PDFs já processados
+                pdf_id = make_id("ProAC PDF", edital_titulo, blob_url)
+                if pdf_id in _SEEN_GLOBAL:
+                    continue
+
+                pdf_checked += 1
+
+                # Baixar e extrair texto
+                try:
+                    pdf_r = requests.get(blob_url, timeout=30, verify=False)
+                    if pdf_r.status_code != 200:
+                        continue
+                    reader = PdfReader(io.BytesIO(pdf_r.content))
+                    text = "\n".join(p.extract_text() or "" for p in reader.pages).upper()
+                except Exception as e:
+                    log.debug(f"ProAC PDF parse erro: {e}")
+                    continue
+
+                # Verificar presença de nome/CNPJ
+                found = next((p for p in SEARCH_PATTERNS if p in text), None)
+                if not found:
+                    continue
+
+                # Snippet contextual
+                snippet = ""
+                for line in text.split("\n"):
+                    if found in line:
+                        snippet = line.strip()[:200]
+                        break
+
+                # Tipo de documento
+                doc_type = "Resultado"
+                if "inscrit" in filename:
+                    doc_type = "Lista de Inscritos"
+                elif "comunicado" in filename:
+                    doc_type = "Comunicado"
+                elif "selec" in filename:
+                    doc_type = "Resultado de Seleção"
+                elif "final" in filename:
+                    doc_type = "Resultado Final"
+
+                results.append({
+                    "source": "ProAC/CultSP",
+                    "title": f"ProAC {doc_type}: {edital_titulo[:60]}",
+                    "url": blob_url,
+                    "snippet": snippet,
+                })
+                log.info(f"  ProAC PDF ENCONTRADO — {edital_titulo[:50]} | {doc_type}")
+                time.sleep(0.5)
+
+        except Exception as e:
+            log.debug(f"ProAC edital erro: {e}")
+
+        time.sleep(0.3)
+
+    log.info(f"ProAC PDFs: {pdf_checked} PDF(s) verificados, {len(results)} com menção")
+    return results
+
 def buscar_editais_culturais() -> list[dict]:
     results = []
     log.info("Buscando em editais culturais...")
+
+    # ProAC/CultSP — PDFs de resultado via scraping direto de edital
+    try:
+        proac_pdf_r = buscar_proac_pdfs()
+        results.extend(proac_pdf_r)
+        log.info(f"  ProAC PDFs: {len(proac_pdf_r)} resultado(s)")
+    except Exception as e:
+        log.warning(f"ProAC PDFs: erro — {e}")
 
     fontes = [
         # (nome, url, params_fn, verify, source_prefix)
@@ -1385,6 +1544,7 @@ def main():
     log.info("=" * 60)
 
     seen = load_seen()
+    _SEEN_GLOBAL.update(seen)  # Disponibiliza seen para buscar_proac_pdfs()
     log.info(f"Histórico carregado: {len(seen)} ID(s) já vistos")
 
     erros_avisos = []
