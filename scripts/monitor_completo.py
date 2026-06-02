@@ -65,14 +65,20 @@ from bs4 import BeautifulSoup
 # Supabase — ÚNICO backend de estado persistente
 # Acessível via HTTP puro de qualquer sandbox, sem dependência de CLI local.
 # ---------------------------------------------------------------------------
-SUPABASE_URL = os.environ.get(
-    "SUPABASE_URL",
-    "https://wuadkgmggkmyglxpxeyh.supabase.co"
+# NOTA: usar "or" para garantir fallback mesmo se a variável de ambiente
+# existir mas estiver vazia (caso do GitHub Actions sem o secret cadastrado).
+SUPABASE_URL = (
+    os.environ.get("SUPABASE_URL")
+    or "https://wuadkgmggkmyglxpxeyh.supabase.co"
 )
 SUPABASE_KEY = os.environ.get(
     "SUPABASE_SERVICE_ROLE_KEY",
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind1YWRrZ21nZ2tteWdseHB4ZXloIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MDk1NzU4NywiZXhwIjoyMDc2NTMzNTg3fQ.Qroz39JExkH4tXofSIqzZMQNtQDAv5rPSR_OJdeH4FI"
 )
+if not os.environ.get("SUPABASE_URL"):
+    import sys as _sys
+    print("[WARN] SUPABASE_URL não definida no ambiente — usando URL embutida no código.", file=_sys.stderr)
+
 _SUPA_HEADERS = {
     "apikey": SUPABASE_KEY,
     "Authorization": f"Bearer {SUPABASE_KEY}",
