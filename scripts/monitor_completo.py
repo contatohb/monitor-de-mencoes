@@ -977,6 +977,47 @@ def buscar_web_geral() -> list[dict]:
         log.debug(f"  Web Geral: {count} resultado(s) para '{term}'")
         time.sleep(2)
 
+    log.info(f"Web Geral (Brave): {len(results)} resultado(s) encontrado(s)")
+
+    # Fallback: DuckDuckGo para termos que Brave pode não indexar
+    # (ex: sites menores como guias culturais, portais regionais)
+    ddg_url = "https://html.duckduckgo.com/html/"
+    for term in SEARCH_TERMS_WEB:
+        try:
+            r_ddg = requests.get(
+                ddg_url,
+                params={"q": f'"{term}"'},
+                headers=HEADERS,
+                timeout=15,
+                verify=False,
+            )
+            soup_ddg = BeautifulSoup(r_ddg.text, "html.parser")
+            for result_el in soup_ddg.select(".result"):
+                link_el = result_el.select_one(".result__a")
+                snippet_el = result_el.select_one(".result__snippet")
+                if not link_el:
+                    continue
+                url_result = link_el.get("href", "")
+                if not url_result.startswith("http") or "duckduckgo.com" in url_result:
+                    continue
+                title = link_el.get_text(strip=True)
+                snippet = snippet_el.get_text(strip=True) if snippet_el else ""
+                term_lower = term.lower()
+                if term_lower in title.lower() or term_lower in snippet.lower():
+                    if not _resultado_relevante_pessoa(term, title, snippet):
+                        continue
+                    results.append({
+                        "source": "Web Geral",
+                        "term": term,
+                        "title": title,
+                        "url": url_result,
+                        "snippet": snippet[:300],
+                        "date": date.today().isoformat(),
+                    })
+            time.sleep(1.5)
+        except Exception as e:
+            log.debug(f"  Web Geral DDG erro para '{term}': {e}")
+
     log.info(f"Web Geral: {len(results)} resultado(s) encontrado(s) (antes de dedup)")
     return results
 
@@ -1201,6 +1242,16 @@ def buscar_concurso_mpsp() -> list[dict]:
                 # inconsistentemente (ex: "Osasco (SP)" vs "Osasco") — causa hash diferente
                 import re as _re
                 territory_name = _re.sub(r'\s*\([A-Z]{2}\)\s*$', '', g.get("territory_name", "desconhecido")).strip()
+                # Rejeitar gazettes mais antigos que 180 dias — evita reprocessamento
+                # infinito de resultados históricos (ex: Osasco 2023) que a API QD
+                # retorna consistentemente com territory_names variadas.
+                try:
+                    gazette_age = (date.today() - date.fromisoformat(g.get("date", "1900-01-01"))).days
+                    if gazette_age > 180:
+                        log.debug(f"  DOE gazette ignorado (muito antigo: {g.get('date')}): {territory_name}")
+                        continue
+                except Exception:
+                    pass
                 excerpts = g.get("excerpts", [])
                 snippet = excerpts[0][:400] if excerpts else ""
                 gazette_date = g.get("date", "")
@@ -1228,6 +1279,7 @@ def buscar_concurso_mpsp() -> list[dict]:
         '"concurso público nº 04/2025" "ministério público" site:vunesp.com.br',
         '"analista técnico científico" "04/2025" veterinário site:vunesp.com.br',
         '"Hudson Viana Borges" site:vunesp.com.br',
+        '"Hudson Viana Borges" site:documento.vunesp.com.br',
     ]
     for term in vunesp_terms:
         try:
