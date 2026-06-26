@@ -56,7 +56,7 @@ import os
 import sys
 import time
 import urllib3
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from urllib.parse import urlparse, parse_qs, unquote
 from pathlib import Path
 
@@ -1267,6 +1267,122 @@ def registrar_email_pendente(assunto: str, corpo: str) -> None:
 
 # ---------------------------------------------------------------------------
 
+# ─────────────────────────────────────────────────────────────────────────────
+# FONTE 8: DOE-SP — Diário Oficial do Estado de São Paulo
+# API oficial: do-api-web-search.doe.sp.gov.br (descoberta via engenharia reversa)
+# Parâmetros corretos: Terms (array), FromDate, ToDate, PageNumber, PageSize, SortField
+# Substitui a abordagem anterior via Querido Diário (territory_id=3550308 = município,
+# não cobria o DOE estadual — causava zero resultados para publicações do Estado de SP).
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def buscar_doe_sp_api(days_back: int = 90) -> list[dict]:
+    """
+    Busca publicações do DOE-SP (Diário Oficial do Estado de São Paulo)
+    que mencionam Hudson Viana Borges, via API oficial do frontend Next.js.
+
+    API: https://do-api-web-search.doe.sp.gov.br/v2/advanced-search/publications
+    Params: Terms (string), FromDate (YYYY-MM-DD), ToDate, PageNumber, PageSize, SortField
+
+    Cobre: convocações, resultados de concurso, nomeações, qualquer publicação
+    no DOE-SP onde "Hudson Viana Borges" aparece no texto indexado.
+    """
+    results: list[dict] = []
+    base = "https://do-api-web-search.doe.sp.gov.br"
+    api_headers = {
+        "User-Agent": HEADERS["User-Agent"],
+        "Accept": "application/json, text/plain, */*",
+        "Origin": "https://www.doe.sp.gov.br",
+        "Referer": "https://www.doe.sp.gov.br/busca-avancada",
+    }
+
+    from_date = (date.today() - timedelta(days=days_back)).isoformat()
+    to_date = date.today().isoformat()
+
+    search_terms = ["Hudson Viana Borges", "Hudson Borges"]
+    seen_pub_ids: set = set()
+
+    log.info(f"Buscando publicações no DOE-SP (últimos {days_back} dias)...")
+
+    for term in search_terms:
+        try:
+            params = {
+                "Terms": term,
+                "FromDate": from_date,
+                "ToDate": to_date,
+                "PageNumber": 1,
+                "PageSize": 20,
+                "SortField": "Date",
+            }
+            r = requests.get(
+                f"{base}/v2/advanced-search/publications",
+                params=params,
+                headers=api_headers,
+                timeout=15,
+                verify=False,
+            )
+            if r.status_code != 200:
+                log.warning(f"DOE-SP API [{term}]: HTTP {r.status_code}")
+                continue
+
+            data = r.json()
+            total = data.get("totalItems", 0)
+            log.info(f"  DOE-SP [{term}]: {total} publicação(ões)")
+
+            for item in data.get("items", []):
+                pub_id = item.get("id", "")
+                if not pub_id or pub_id in seen_pub_ids:
+                    continue
+                seen_pub_ids.add(pub_id)
+
+                title = item.get("title", "")
+                pub_date = (item.get("date", "") or "")[:10]
+                slug = item.get("slug", "")
+                url = f"https://www.doe.sp.gov.br/{slug}" if slug else ""
+
+                # Buscar conteúdo completo para extrair snippet com contexto
+                snippet = ""
+                try:
+                    r2 = requests.get(
+                        f"{base}/v2/publications/{pub_id}",
+                        headers=api_headers,
+                        timeout=15,
+                        verify=False,
+                    )
+                    if r2.status_code == 200:
+                        pub_data = r2.json()
+                        content_html = pub_data.get("content", "")
+                        content_text = BeautifulSoup(content_html, "html.parser").get_text(" ", strip=True)
+                        # Localizar contexto ao redor do nome
+                        idx_h = content_text.upper().find("HUDSON VIANA BORGES")
+                        if idx_h == -1:
+                            idx_h = content_text.upper().find("HUDSON BORGES")
+                        if idx_h >= 0:
+                            snippet = content_text[max(0, idx_h - 120):idx_h + 350].strip()
+                        else:
+                            snippet = content_text[:400]
+                except Exception as e_content:
+                    log.debug(f"  DOE-SP conteúdo fetch erro: {e_content}")
+
+                results.append({
+                    "source": "DOE-SP (Diário Oficial Estado SP)",
+                    "term": term,
+                    "title": f"[DOE-SP {pub_date}] {title}",
+                    "url": url,
+                    "snippet": snippet,
+                    "date": pub_date or date.today().isoformat(),
+                })
+                log.info(f"  DOE-SP resultado: [{pub_date}] {title[:80]}")
+
+        except Exception as e:
+            log.warning(f"DOE-SP API erro [{term}]: {e}")
+
+        time.sleep(1)
+
+    log.info(f"DOE-SP TOTAL: {len(results)} resultado(s)")
+    return results
+
+
 # ---------------------------------------------------------------------------
 # FONTE 7: Acompanhamento Concurso MPSP 04/2025
 # Cargo: Analista Técnico-Científico — Médico Veterinário
@@ -1381,61 +1497,19 @@ def buscar_concurso_mpsp() -> list[dict]:
     descartados = 0
     log.info("Buscando atualizações do Concurso MPSP 04/2025 (Médico Veterinário ATC-1.23)...")
 
-    # ── 1. DOE-SP via Querido Diário API ──────────────────────────────────
-    # APENAS busca pelo nome pessoal. Termos genéricos retornam 10k+ falsos positivos.
-    # NOTA: a API NÃO filtra corretamente por territory_id na busca textual,
-    # então filtramos manualmente pelo state_code no retorno.
-    api_url = "https://api.queridodiario.ok.org.br/api/gazettes"
-    doe_terms = [
-        '"Hudson Viana Borges"',
-    ]
-    for term in doe_terms:
-        try:
-            params = {
-                "querystring": term,
-                "territory_id": "3550308",
-                "size": 10,
-                "sort_by": "relevance",
-            }
-            r = get_page(api_url, params=params, headers=HEADERS_JSON)
-            if not r:
-                continue
-            data = r.json()
-            for g in data.get("gazettes", []):
-                state_code = g.get("state_code", "")
-                # Normalizar territory_name: strip sufixo " (XX)" que a API QD adiciona
-                # inconsistentemente (ex: "Osasco (SP)" vs "Osasco") — causa hash diferente
-                import re as _re
-                territory_name = _re.sub(r'\s*\([A-Z]{2}\)\s*$', '', g.get("territory_name", "desconhecido")).strip()
-                # Rejeitar gazettes mais antigos que 180 dias — evita reprocessamento
-                # infinito de resultados históricos (ex: Osasco 2023) que a API QD
-                # retorna consistentemente com territory_names variadas.
-                try:
-                    gazette_age = (date.today() - date.fromisoformat(g.get("date", "1900-01-01"))).days
-                    if gazette_age > 180:
-                        log.debug(f"  DOE gazette ignorado (muito antigo: {g.get('date')}): {territory_name}")
-                        continue
-                except Exception:
-                    pass
-                excerpts = g.get("excerpts", [])
-                snippet = excerpts[0][:400] if excerpts else ""
-                gazette_date = g.get("date", "")
-                title = f"[DOE-{state_code or 'BR'} {territory_name} {gazette_date}] Menção a Hudson Viana Borges"
-                direct_url = g.get("url", "") or g.get("txt_url", "") or g.get("file_url", "")
-                results.append({
-                    "source": f"DOE-{state_code or 'BR'} {territory_name} (Menção pessoal)",
-                    "term": "Hudson Viana Borges",
-                    "title": title,
-                    "url": direct_url,
-                    "snippet": snippet,
-                    "date": gazette_date or date.today().isoformat(),
-                })
-        except Exception as e:
-            log.warning(f"DOE-SP concurso MPSP ({term}): {e}")
-        time.sleep(1)
-
-    log.info(f"  DOE (nome pessoal): {len(results)} resultado(s)")
+    # ── 1. DOE-SP via API oficial (do-api-web-search.doe.sp.gov.br) ─────────────
+    # NOTA: a abordagem anterior via Querido Diário usava territory_id=3550308
+    # (município de SP), que não cobre o DOE estadual — sempre retornava zero resultados.
+    # A função buscar_doe_sp_api() usa a API real do frontend Next.js do DOE-SP,
+    # que faz busca full-text no conteúdo das publicações do Estado de SP.
+    doe_sp_results = buscar_doe_sp_api(days_back=90)
+    for res in doe_sp_results:
+        if _resultado_relevante_mpsp(res["title"], res["snippet"]):
+            results.append(res)
+        else:
+            descartados += 1
     count_doe = len(results)
+    log.info(f"  DOE-SP (API oficial): {count_doe} relevante(s) para MPSP")
 
 
     # ── 2. VUNESP via DuckDuckGo ──────────────────────────────────────────
@@ -1570,6 +1644,13 @@ def main():
         todos_resultados.extend(buscar_diarios_estaduais())
     except Exception as e:
         msg = f"Diários Estaduais: erro inesperado — {e}"
+        log.error(msg)
+        erros_avisos.append(msg)
+
+    try:
+        todos_resultados.extend(buscar_doe_sp_api())
+    except Exception as e:
+        msg = f"DOE-SP API: erro inesperado — {e}"
         log.error(msg)
         erros_avisos.append(msg)
 
