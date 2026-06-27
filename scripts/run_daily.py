@@ -192,7 +192,7 @@ def executar_monitor(force_send: bool = False) -> dict:
         capture_output=True,
         text=True,
         cwd=str(BASE_DIR),
-        timeout=600,
+        timeout=900,
     )
     log.info(f"Monitor concluído — código de saída: {result.returncode}")
     if result.stderr:
