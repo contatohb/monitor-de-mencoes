@@ -1276,7 +1276,7 @@ def registrar_email_pendente(assunto: str, corpo: str) -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def buscar_doe_sp_api(days_back: int = 90) -> list[dict]:
+def buscar_doe_sp_api(days_back: int = 7) -> list[dict]:
     """
     Busca publicações do DOE-SP (Diário Oficial do Estado de São Paulo)
     que mencionam Hudson Viana Borges, via API oficial do frontend Next.js.
@@ -1286,6 +1286,11 @@ def buscar_doe_sp_api(days_back: int = 90) -> list[dict]:
 
     Cobre: convocações, resultados de concurso, nomeações, qualquer publicação
     no DOE-SP onde "Hudson Viana Borges" aparece no texto indexado.
+
+    PERF: days_back=7 (monitor diário não precisa de 90 dias).
+    Somente "Hudson Viana Borges" (nome completo) — "Hudson Borges" é
+    genérico demais e gera até 20 resultados × 15s de GET cada = timeout.
+    Limite de MAX_DETAIL_GETS GETs de detalhe por execução.
     """
     results: list[dict] = []
     base = "https://do-api-web-search.doe.sp.gov.br"
@@ -1299,10 +1304,14 @@ def buscar_doe_sp_api(days_back: int = 90) -> list[dict]:
     from_date = (date.today() - timedelta(days=days_back)).isoformat()
     to_date = date.today().isoformat()
 
-    search_terms = ["Hudson Viana Borges", "Hudson Borges"]
+    # SOMENTE nome completo — "Hudson Borges" é genérico demais no DOE-SP
+    search_terms = ["Hudson Viana Borges"]
     seen_pub_ids: set = set()
+    MAX_DETAIL_GETS = 5  # limite de GETs de detalhe por execução para evitar timeout
 
     log.info(f"Buscando publicações no DOE-SP (últimos {days_back} dias)...")
+
+    detail_gets_total = 0
 
     for term in search_terms:
         try:
@@ -1311,7 +1320,7 @@ def buscar_doe_sp_api(days_back: int = 90) -> list[dict]:
                 "FromDate": from_date,
                 "ToDate": to_date,
                 "PageNumber": 1,
-                "PageSize": 20,
+                "PageSize": 10,
                 "SortField": "Date",
             }
             r = requests.get(
@@ -1341,28 +1350,31 @@ def buscar_doe_sp_api(days_back: int = 90) -> list[dict]:
                 url = f"https://www.doe.sp.gov.br/{slug}" if slug else ""
 
                 # Buscar conteúdo completo para extrair snippet com contexto
+                # Limitado a MAX_DETAIL_GETS por execução para evitar timeout
                 snippet = ""
-                try:
-                    r2 = requests.get(
-                        f"{base}/v2/publications/{pub_id}",
-                        headers=api_headers,
-                        timeout=15,
-                        verify=False,
-                    )
-                    if r2.status_code == 200:
-                        pub_data = r2.json()
-                        content_html = pub_data.get("content", "")
-                        content_text = BeautifulSoup(content_html, "html.parser").get_text(" ", strip=True)
-                        # Localizar contexto ao redor do nome
-                        idx_h = content_text.upper().find("HUDSON VIANA BORGES")
-                        if idx_h == -1:
-                            idx_h = content_text.upper().find("HUDSON BORGES")
-                        if idx_h >= 0:
-                            snippet = content_text[max(0, idx_h - 120):idx_h + 350].strip()
-                        else:
-                            snippet = content_text[:400]
-                except Exception as e_content:
-                    log.debug(f"  DOE-SP conteúdo fetch erro: {e_content}")
+                if detail_gets_total < MAX_DETAIL_GETS:
+                    try:
+                        r2 = requests.get(
+                            f"{base}/v2/publications/{pub_id}",
+                            headers=api_headers,
+                            timeout=10,
+                            verify=False,
+                        )
+                        detail_gets_total += 1
+                        if r2.status_code == 200:
+                            pub_data = r2.json()
+                            content_html = pub_data.get("content", "")
+                            content_text = BeautifulSoup(content_html, "html.parser").get_text(" ", strip=True)
+                            # Localizar contexto ao redor do nome
+                            idx_h = content_text.upper().find("HUDSON VIANA BORGES")
+                            if idx_h >= 0:
+                                snippet = content_text[max(0, idx_h - 120):idx_h + 350].strip()
+                            else:
+                                snippet = content_text[:400]
+                    except Exception as e_content:
+                        log.debug(f"  DOE-SP conteúdo fetch erro: {e_content}")
+                else:
+                    log.debug(f"  DOE-SP: limite de {MAX_DETAIL_GETS} GETs de detalhe atingido, pulando snippet")
 
                 results.append({
                     "source": "DOE-SP (Diário Oficial Estado SP)",
@@ -1480,12 +1492,9 @@ def buscar_concurso_mpsp() -> list[dict]:
     Monitora publicações do Concurso Público Nº 04/2025 do MPSP
     (Analista Técnico Científico — Médico Veterinário ATC-1.23).
 
-    ESTRATÉGIA v6:
-    1. DOE-SP: busca SOMENTE "Hudson Viana Borges" (nome pessoal)
-       → A Querido Diário API retorna diários inteiros, então termos
-         genéricos geram milhares de falsos positivos de prefeituras.
-       → O monitor genérico já busca pelo nome em todas as fontes.
-       → Aqui buscamos especificamente no DOE-SP de São Paulo.
+    ESTRATÉGIA v7:
+    1. DOE-SP → coberto por buscar_doe_sp_api() chamado diretamente em main().
+       NÃO chamar novamente aqui — duplicação causava timeout (2× as requests).
 
     2. VUNESP via DDG: busca frases exatas sobre o concurso
        → DDG faz matching real de frase, ao contrário da API QD.
@@ -1497,22 +1506,7 @@ def buscar_concurso_mpsp() -> list[dict]:
     descartados = 0
     log.info("Buscando atualizações do Concurso MPSP 04/2025 (Médico Veterinário ATC-1.23)...")
 
-    # ── 1. DOE-SP via API oficial (do-api-web-search.doe.sp.gov.br) ─────────────
-    # NOTA: a abordagem anterior via Querido Diário usava territory_id=3550308
-    # (município de SP), que não cobre o DOE estadual — sempre retornava zero resultados.
-    # A função buscar_doe_sp_api() usa a API real do frontend Next.js do DOE-SP,
-    # que faz busca full-text no conteúdo das publicações do Estado de SP.
-    doe_sp_results = buscar_doe_sp_api(days_back=90)
-    for res in doe_sp_results:
-        if _resultado_relevante_mpsp(res["title"], res["snippet"]):
-            results.append(res)
-        else:
-            descartados += 1
-    count_doe = len(results)
-    log.info(f"  DOE-SP (API oficial): {count_doe} relevante(s) para MPSP")
-
-
-    # ── 2. VUNESP via DuckDuckGo ──────────────────────────────────────────
+    # ── 1. VUNESP via DuckDuckGo ──────────────────────────────────────────
     # DDG faz matching real de frase exata — muito mais preciso que a API QD.
     vunesp_terms = [
         '"concurso público nº 04/2025" "ministério público" site:vunesp.com.br',
@@ -1551,7 +1545,7 @@ def buscar_concurso_mpsp() -> list[dict]:
             log.warning(f"VUNESP concurso MPSP: {e}")
         time.sleep(2)
 
-    log.info(f"  VUNESP: {len(results) - count_doe} relevante(s), {descartados} descartado(s)")
+    log.info(f"  VUNESP: {len(results)} relevante(s), {descartados} descartado(s)")
     count_vunesp = len(results)
     descartados_vunesp = descartados
 
