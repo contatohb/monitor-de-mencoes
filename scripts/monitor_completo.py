@@ -53,6 +53,7 @@ import re
 import json
 import logging
 import os
+import signal
 import sys
 import time
 import urllib3
@@ -219,7 +220,7 @@ def load_seen() -> set:
         r = requests.get(
             f"{SUPABASE_URL}/rest/v1/monitor_seen?select=id",
             headers=_SUPA_HEADERS,
-            timeout=15,
+            timeout=8,
         )
         if r.status_code == 200:
             rows = r.json()
@@ -257,7 +258,7 @@ def save_seen(seen: set, new_ids: set = None, source_map: dict = None) -> None:
             f"{SUPABASE_URL}/rest/v1/monitor_seen",
             headers={**_SUPA_HEADERS, "Prefer": "resolution=ignore-duplicates,return=minimal"},
             json=rows,
-            timeout=15,
+            timeout=8,
         )
         if r.status_code in (200, 201, 204):
             log.info(f"Supabase save_seen: {len(ids_to_persist)} ID(s) persistidos")
@@ -286,7 +287,7 @@ def get_page(
     url: str,
     params: dict = None,
     headers: dict = None,
-    timeout: int = 20,
+    timeout: int = 8,
     verify: bool = False,
     allow_redirects: bool = True,
 ) -> requests.Response | None:
@@ -359,7 +360,7 @@ def buscar_via_duckduckgo(term: str, site: str, source_name: str) -> list[dict]:
             "https://html.duckduckgo.com/html/",
             params={"q": query},
             headers=HEADERS,
-            timeout=15,
+            timeout=8,
             verify=False,
         )
         if r.status_code != 200:
@@ -434,7 +435,7 @@ def buscar_dou() -> list[dict]:
         ])
         if sem_resultado:
             log.debug(f"DOU: sem resultados para '{term}'")
-            time.sleep(1)
+            time.sleep(0.3)
             continue
 
         # Verificar se o termo aparece no conteúdo (pode estar em resultados renderizados)
@@ -480,7 +481,7 @@ def buscar_dou() -> list[dict]:
                     "snippet": f"Termo '{term}' localizado na página de busca do DOU.",
                     "date": date.today().isoformat(),
                 })
-        time.sleep(1)
+        time.sleep(0.3)
     log.info(f"DOU: {len(results)} resultado(s) encontrado(s)")
     return results
 
@@ -536,7 +537,7 @@ def buscar_querido_diario() -> list[dict]:
                 })
         except Exception as e:
             log.warning(f"Erro ao parsear Querido Diário: {e}")
-        time.sleep(1)
+        time.sleep(0.3)
     log.info(f"Querido Diário: {len(results)} resultado(s)")
     return results
 
@@ -554,7 +555,9 @@ def buscar_diarios_estaduais() -> list[dict]:
     # CORRIGIDO: usar api.queridodiario.ok.org.br
     api_url = "https://api.queridodiario.ok.org.br/api/gazettes"
     # state_code é a sigla do estado (aceita pela API)
-    estados = ["SP", "RJ", "MG", "RS", "PR", "SC", "BA", "PE", "CE", "GO", "DF"]
+    # Apenas estados relevantes para Hudson Viana Borges (SP, DF).
+    # Reduzido de 11 para 2: 5 termos × 11 estados × timeout = bottleneck principal.
+    estados = ["SP", "DF"]
     for term in SEARCH_TERMS:
         for estado in estados:
             params = {
@@ -697,7 +700,7 @@ def _buscar_em_pagina(
             })
         else:
             log.debug(f"{nome}: termo '{term}' não encontrado em contexto real")
-        time.sleep(1)
+        time.sleep(0.3)
     return results
 
 
@@ -762,7 +765,7 @@ def buscar_bancas() -> list[dict]:
             r_list = buscar_via_duckduckgo(term, site, f"Banca: {nome}")
             results.extend(r_list)
             count += len(r_list)
-            time.sleep(1)
+            time.sleep(0.3)
         log.info(f"  {nome} (via DDG): {count} resultado(s)")
 
     log.info(f"Bancas: {len(results)} resultado(s) total")
@@ -831,7 +834,7 @@ def buscar_proac_pdfs() -> list[dict]:
         f"{CULTSP_BASE}/sec_cultura/Fomento/Programa_PNAB",
     ]:
         try:
-            r = requests.get(list_url, headers=HEADERS, timeout=20, verify=False)
+            r = requests.get(list_url, headers=HEADERS, timeout=8, verify=False)
             if r.status_code != 200:
                 log.warning(f"ProAC PDFs: {list_url[-50:]} HTTP {r.status_code}")
                 continue
@@ -858,7 +861,7 @@ def buscar_proac_pdfs() -> list[dict]:
     pdf_checked = 0
     for edital_url, edital_titulo in sorted_editais:
         try:
-            r = requests.get(edital_url, headers=HEADERS, timeout=15, verify=False)
+            r = requests.get(edital_url, headers=HEADERS, timeout=8, verify=False)
             if r.status_code != 200:
                 continue
 
@@ -885,7 +888,7 @@ def buscar_proac_pdfs() -> list[dict]:
 
                 # Baixar e extrair texto
                 try:
-                    pdf_r = requests.get(blob_url, timeout=30, verify=False)
+                    pdf_r = requests.get(blob_url, timeout=15, verify=False)
                     if pdf_r.status_code != 200:
                         continue
                     reader = PdfReader(io.BytesIO(pdf_r.content))
@@ -1051,7 +1054,7 @@ def buscar_editais_culturais() -> list[dict]:
             r_list = buscar_via_duckduckgo(term, site, source_prefix)
             results.extend(r_list)
             count += len(r_list)
-            time.sleep(1)
+            time.sleep(0.3)
         log.info(f"  {nome} (via DDG): {count} resultado(s)")
 
     # Oi Futuro: domínio fora do ar — registrar no log
@@ -1098,12 +1101,12 @@ def buscar_web_geral() -> list[dict]:
                 "https://search.brave.com/search",
                 params={"q": query, "source": "web"},
                 headers=HEADERS_BRAVE,
-                timeout=20,
+                timeout=8,
                 verify=False,
             )
             if r.status_code not in (200, 202):
                 log.debug(f"Web Geral Brave: HTTP {r.status_code} para '{term}'")
-                time.sleep(2)
+                time.sleep(0.3)
                 continue
         except Exception as e:
             log.warning(f"Web Geral Brave erro para '{term}': {e}")
@@ -1140,7 +1143,7 @@ def buscar_web_geral() -> list[dict]:
                 })
                 count += 1
         log.debug(f"  Web Geral: {count} resultado(s) para '{term}'")
-        time.sleep(2)
+        time.sleep(0.3)
 
     log.info(f"Web Geral (Brave): {len(results)} resultado(s) encontrado(s)")
 
@@ -1153,7 +1156,7 @@ def buscar_web_geral() -> list[dict]:
                 ddg_url,
                 params={"q": f'"{term}"'},
                 headers=HEADERS,
-                timeout=15,
+                timeout=8,
                 verify=False,
             )
             soup_ddg = BeautifulSoup(r_ddg.text, "html.parser")
@@ -1179,7 +1182,7 @@ def buscar_web_geral() -> list[dict]:
                         "snippet": snippet[:300],
                         "date": date.today().isoformat(),
                     })
-            time.sleep(1.5)
+            time.sleep(0.3)
         except Exception as e:
             log.debug(f"  Web Geral DDG erro para '{term}': {e}")
 
@@ -1327,7 +1330,7 @@ def buscar_doe_sp_api(days_back: int = 7) -> list[dict]:
                 f"{base}/v2/advanced-search/publications",
                 params=params,
                 headers=api_headers,
-                timeout=15,
+                timeout=8,
                 verify=False,
             )
             if r.status_code != 200:
@@ -1389,7 +1392,7 @@ def buscar_doe_sp_api(days_back: int = 7) -> list[dict]:
         except Exception as e:
             log.warning(f"DOE-SP API erro [{term}]: {e}")
 
-        time.sleep(1)
+        time.sleep(0.3)
 
     log.info(f"DOE-SP TOTAL: {len(results)} resultado(s)")
     return results
@@ -1517,7 +1520,7 @@ def buscar_concurso_mpsp() -> list[dict]:
     for term in vunesp_terms:
         try:
             ddg_url = "https://html.duckduckgo.com/html/"
-            r = requests.get(ddg_url, params={"q": term}, headers=HEADERS, timeout=15, verify=False)
+            r = requests.get(ddg_url, params={"q": term}, headers=HEADERS, timeout=8, verify=False)
             if r.status_code == 200:
                 soup = BeautifulSoup(r.text, "html.parser")
                 for link_el in soup.select("a.result__a"):
@@ -1543,7 +1546,7 @@ def buscar_concurso_mpsp() -> list[dict]:
                     })
         except Exception as e:
             log.warning(f"VUNESP concurso MPSP: {e}")
-        time.sleep(2)
+        time.sleep(0.3)
 
     log.info(f"  VUNESP: {len(results)} relevante(s), {descartados} descartado(s)")
     count_vunesp = len(results)
@@ -1558,7 +1561,7 @@ def buscar_concurso_mpsp() -> list[dict]:
     for term in dou_terms:
         try:
             ddg_url = "https://html.duckduckgo.com/html/"
-            r = requests.get(ddg_url, params={"q": term}, headers=HEADERS, timeout=15, verify=False)
+            r = requests.get(ddg_url, params={"q": term}, headers=HEADERS, timeout=8, verify=False)
             if r.status_code == 200:
                 soup = BeautifulSoup(r.text, "html.parser")
                 for link_el in soup.select("a.result__a"):
@@ -1584,7 +1587,7 @@ def buscar_concurso_mpsp() -> list[dict]:
                     })
         except Exception as e:
             log.warning(f"DOU concurso MPSP ({term}): {e}")
-        time.sleep(2)
+        time.sleep(0.3)
 
     log.info(f"  DOU: {len(results) - count_vunesp} relevante(s), {descartados - descartados_vunesp} descartado(s)")
     log.info(f"Concurso MPSP 04/2025 TOTAL: {len(results)} relevante(s), {descartados} descartado(s)")
@@ -1605,10 +1608,29 @@ def main():
     )
     args = parser.parse_args()
 
+    # ── Timeout global do script ──────────────────────────────────────────────
+    # Garante que o script termine em no máximo 720s (12 min), independente
+    # de qual fonte esteja lenta. Isso deixa 180s de margem antes do timeout
+    # de 900s do run_daily.py. Quando disparado, a coleta para e o script
+    # envia os resultados que já foram coletados até aquele momento.
+    _MAX_SCRIPT_SECONDS = 720
+
+    class _ScriptTimeout(BaseException):
+        pass
+
+    def _timeout_handler(signum, frame):
+        raise _ScriptTimeout(f"Timeout de {_MAX_SCRIPT_SECONDS}s atingido")
+
+    signal.signal(signal.SIGALRM, _timeout_handler)
+    signal.alarm(_MAX_SCRIPT_SECONDS)
+    _t_start = time.time()
+    # ─────────────────────────────────────────────────────────────────────────
+
     log.info("=" * 60)
     log.info("Monitor de Menções — Iniciando execução")
     log.info(f"Data/hora: {datetime.now().isoformat()}")
     log.info(f"Termos: {SEARCH_TERMS}")
+    log.info(f"Timeout máximo: {_MAX_SCRIPT_SECONDS}s")
     log.info("=" * 60)
 
     seen = load_seen()
@@ -1621,60 +1643,70 @@ def main():
     todos_resultados = []
 
     try:
-        todos_resultados.extend(buscar_dou())
-    except Exception as e:
-        msg = f"DOU: erro inesperado — {e}"
-        log.error(msg)
+        try:
+            todos_resultados.extend(buscar_dou())
+        except Exception as e:
+            msg = f"DOU: erro inesperado — {e}"
+            log.error(msg)
+            erros_avisos.append(msg)
+
+        try:
+            todos_resultados.extend(buscar_querido_diario())
+        except Exception as e:
+            msg = f"Querido Diário: erro inesperado — {e}"
+            log.error(msg)
+            erros_avisos.append(msg)
+
+        try:
+            todos_resultados.extend(buscar_diarios_estaduais())
+        except Exception as e:
+            msg = f"Diários Estaduais: erro inesperado — {e}"
+            log.error(msg)
+            erros_avisos.append(msg)
+
+        try:
+            todos_resultados.extend(buscar_doe_sp_api())
+        except Exception as e:
+            msg = f"DOE-SP API: erro inesperado — {e}"
+            log.error(msg)
+            erros_avisos.append(msg)
+
+        try:
+            todos_resultados.extend(buscar_bancas())
+        except Exception as e:
+            msg = f"Bancas: erro inesperado — {e}"
+            log.error(msg)
+            erros_avisos.append(msg)
+
+        try:
+            todos_resultados.extend(buscar_editais_culturais())
+        except Exception as e:
+            msg = f"Editais Culturais: erro inesperado — {e}"
+            log.error(msg)
+            erros_avisos.append(msg)
+
+        try:
+            todos_resultados.extend(buscar_web_geral())
+        except Exception as e:
+            msg = f"Busca Web Geral: erro inesperado — {e}"
+            log.error(msg)
+            erros_avisos.append(msg)
+
+        try:
+            todos_resultados.extend(buscar_concurso_mpsp())
+        except Exception as e:
+            msg = f"Concurso MPSP: erro inesperado — {e}"
+            log.error(msg)
+            erros_avisos.append(msg)
+
+    except _ScriptTimeout:
+        elapsed = int(time.time() - _t_start)
+        msg = f"⏱ Timeout de {_MAX_SCRIPT_SECONDS}s atingido ({elapsed}s) — {len(todos_resultados)} resultado(s) coletados"
+        log.warning(msg)
         erros_avisos.append(msg)
 
-    try:
-        todos_resultados.extend(buscar_querido_diario())
-    except Exception as e:
-        msg = f"Querido Diário: erro inesperado — {e}"
-        log.error(msg)
-        erros_avisos.append(msg)
-
-    try:
-        todos_resultados.extend(buscar_diarios_estaduais())
-    except Exception as e:
-        msg = f"Diários Estaduais: erro inesperado — {e}"
-        log.error(msg)
-        erros_avisos.append(msg)
-
-    try:
-        todos_resultados.extend(buscar_doe_sp_api())
-    except Exception as e:
-        msg = f"DOE-SP API: erro inesperado — {e}"
-        log.error(msg)
-        erros_avisos.append(msg)
-
-    try:
-        todos_resultados.extend(buscar_bancas())
-    except Exception as e:
-        msg = f"Bancas: erro inesperado — {e}"
-        log.error(msg)
-        erros_avisos.append(msg)
-
-    try:
-        todos_resultados.extend(buscar_editais_culturais())
-    except Exception as e:
-        msg = f"Editais Culturais: erro inesperado — {e}"
-        log.error(msg)
-        erros_avisos.append(msg)
-
-    try:
-        todos_resultados.extend(buscar_web_geral())
-    except Exception as e:
-        msg = f"Busca Web Geral: erro inesperado — {e}"
-        log.error(msg)
-        erros_avisos.append(msg)
-
-    try:
-        todos_resultados.extend(buscar_concurso_mpsp())
-    except Exception as e:
-        msg = f"Concurso MPSP: erro inesperado — {e}"
-        log.error(msg)
-        erros_avisos.append(msg)
+    finally:
+        signal.alarm(0)  # cancelar o alarme se o script terminou antes
 
     log.info(f"Total bruto coletado: {len(todos_resultados)} resultado(s)")
 
