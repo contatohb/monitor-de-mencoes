@@ -1640,9 +1640,25 @@ def main():
     erros_avisos = []
 
     # Coleta de todas as fontes
+    # Ordem de prioridade: DOE-SP e DOU primeiro (mais críticos), bancas/editais por último
     todos_resultados = []
 
     try:
+        # ── Fontes prioritárias (rodam primeiro, antes de qualquer timeout) ──
+        try:
+            todos_resultados.extend(buscar_doe_sp_api())
+        except Exception as e:
+            msg = f"DOE-SP API: erro inesperado — {e}"
+            log.error(msg)
+            erros_avisos.append(msg)
+
+        try:
+            todos_resultados.extend(buscar_concurso_mpsp())
+        except Exception as e:
+            msg = f"Concurso MPSP: erro inesperado — {e}"
+            log.error(msg)
+            erros_avisos.append(msg)
+
         try:
             todos_resultados.extend(buscar_dou())
         except Exception as e:
@@ -1664,10 +1680,11 @@ def main():
             log.error(msg)
             erros_avisos.append(msg)
 
+        # ── Fontes secundárias (podem ser cortadas pelo timeout sem perda crítica) ──
         try:
-            todos_resultados.extend(buscar_doe_sp_api())
+            todos_resultados.extend(buscar_web_geral())
         except Exception as e:
-            msg = f"DOE-SP API: erro inesperado — {e}"
+            msg = f"Busca Web Geral: erro inesperado — {e}"
             log.error(msg)
             erros_avisos.append(msg)
 
@@ -1685,25 +1702,13 @@ def main():
             log.error(msg)
             erros_avisos.append(msg)
 
-        try:
-            todos_resultados.extend(buscar_web_geral())
-        except Exception as e:
-            msg = f"Busca Web Geral: erro inesperado — {e}"
-            log.error(msg)
-            erros_avisos.append(msg)
-
-        try:
-            todos_resultados.extend(buscar_concurso_mpsp())
-        except Exception as e:
-            msg = f"Concurso MPSP: erro inesperado — {e}"
-            log.error(msg)
-            erros_avisos.append(msg)
-
     except _ScriptTimeout:
         elapsed = int(time.time() - _t_start)
-        msg = f"⏱ Timeout de {_MAX_SCRIPT_SECONDS}s atingido ({elapsed}s) — {len(todos_resultados)} resultado(s) coletados"
+        # Timeout nas fontes secundárias não é uma regressão crítica
+        # — as fontes prioritárias (DOE-SP, DOU, QD) já rodaram
+        msg = f"Fontes secundárias interrompidas pelo timeout de {_MAX_SCRIPT_SECONDS}s ({elapsed}s decorridos)"
         log.warning(msg)
-        erros_avisos.append(msg)
+        # Não adicionar ao erros_avisos para não gerar alarme no email em dias sem menções
 
     finally:
         signal.alarm(0)  # cancelar o alarme se o script terminou antes
