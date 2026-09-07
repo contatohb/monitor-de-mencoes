@@ -1,0 +1,34 @@
+# CI mínimo — roda em pull_request (testa o commit de merge do branch
+# contra master, é isso que o Auto Merge espera passar) e em push direto
+# pra master (checagem de sanidade pós-merge). Repo simples de script de
+# alerta, sem suíte de testes própria hoje — este CI garante pelo menos que
+# todo .py no repo compila (sintaxe válida) e que as dependências instalam
+# limpo, antes de qualquer PR poder ser mesclada automaticamente.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Instala dependências
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Verifica sintaxe de todos os arquivos Python
+        run: python -m py_compile $(git ls-files '*.py')

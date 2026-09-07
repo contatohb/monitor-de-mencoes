@@ -1,0 +1,35 @@
+# Abre PR automaticamente pra master sempre que um branch novo (que não
+# seja master) recebe um push, se ainda não existir PR aberta pra ele. Faz
+# parte da automação PR + merge sem intervenção manual — ver auto-merge.yml.
+# Réplica do padrão já em uso no repo sicr-hb-advisory (mesma HB Advisory) —
+# pedido do Hudson pra padronizar auto-merge entre os repos ativos.
+name: Auto PR
+
+on:
+  push:
+    branches-ignore: [master]
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  open-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Abre PR se ainda não existir uma pra este branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          EXISTING=$(gh pr list --repo "${{ github.repository }}" --head "${{ github.ref_name }}" --state open --json number --jq '.[0].number // empty')
+          if [ -z "$EXISTING" ]; then
+            gh pr create --repo "${{ github.repository }}" --base master --head "${{ github.ref_name }}" --fill
+          else
+            echo "PR #$EXISTING já existe pra este branch, nada a fazer."
+          fi

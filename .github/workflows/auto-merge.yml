@@ -1,0 +1,50 @@
+# Mergeia (squash) automaticamente a PR de um branch assim que o workflow
+# "CI" termina com sucesso *pra essa PR* (evento pull_request
+# — testa o commit de merge do branch contra master, não o branch isolado).
+# Dispara via workflow_run (não via pull_request diretamente) pra não
+# depender de quem/qual token abriu a PR — só depende do CI ter passado
+# nesse commit de merge. Deleta o branch depois de mergear.
+#
+# Réplica do padrão já em uso no repo sicr-hb-advisory (ver o histórico de
+# bug ali documentado: exige explicitamente head_branch != 'master' e
+# event == 'pull_request', pra nunca reagir a uma rodada de push isolado).
+name: Auto Merge
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+permissions:
+  pull-requests: write
+  contents: write
+
+jobs:
+  merge:
+    if: |
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.head_branch != 'master'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mergeia a PR aberta pra este branch, se houver
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          set -e
+          PR_NUMBER=""
+          # pequena espera/retry: a PR pode ainda não existir se o job
+          # auto-pr.yml (disparado pelo mesmo push) ainda não terminou.
+          for i in 1 2 3 4 5 6; do
+            PR_NUMBER=$(gh pr list --repo "${{ github.repository }}" --head "$BRANCH" --state open --json number,isDraft,labels \
+              --jq '.[] | select(.isDraft == false) | select(all(.labels[]?; .name != "no-automerge")) | .number' | head -1)
+            if [ -n "$PR_NUMBER" ]; then break; fi
+            sleep 5
+          done
+          if [ -z "$PR_NUMBER" ]; then
+            echo "Nenhuma PR aberta (elegível) encontrada pro branch $BRANCH — nada a mergear."
+            exit 0
+          fi
+          echo "Mergeando PR #$PR_NUMBER (squash, deleta branch)..."
+          gh pr merge "$PR_NUMBER" --repo "${{ github.repository }}" --squash --delete-branch
